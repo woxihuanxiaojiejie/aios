@@ -52,3 +52,11 @@ class InsufficientMarketDataError(AiosError):
 
 class EvaluationConfigurationError(AiosError):
     """Raised when deterministic evaluation rules cannot be applied."""
+
+
+class SettlementReviewMappingError(AiosError):
+    """Raised when settlement details cannot be mapped to a Review."""
+
+
+class ReviewConsistencyError(AiosError):
+    """Raised when an existing Review conflicts with settlement details."""

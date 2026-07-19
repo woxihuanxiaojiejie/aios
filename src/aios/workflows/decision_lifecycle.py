@@ -77,10 +77,7 @@ class DecisionLifecycleService:
 
     def create_review(self, review: Review) -> Review:
         self._require_exists(Decision, review.decision_id)
-        if any(
-            item.decision_id == review.decision_id
-            for item in self._storage.list(Review)
-        ):
+        if self._storage.get_review_by_decision_id(review.decision_id) is not None:
             msg = f"Decision {review.decision_id} already has a Review"
             raise DuplicateEntityError(msg)
         self._storage.save(review)
@@ -136,6 +133,9 @@ class DecisionLifecycleService:
             decision_id,
             evaluation_rules_version,
         )
+
+    def get_review_by_decision_id(self, decision_id: str) -> Review | None:
+        return self._storage.get_review_by_decision_id(decision_id)
 
     def propose_learning(self, learning: Learning) -> Learning:
         self._require_exists(Review, learning.review_id)

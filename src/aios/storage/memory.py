@@ -108,6 +108,14 @@ class InMemoryStorage:
                 return evaluation
         return None
 
+    def get_review_by_decision_id(self, decision_id: str) -> Review | None:
+        self._require_supported(Review)
+        for entity in self._entities[Review].values():
+            review = cast("Review", entity)
+            if review.decision_id == decision_id:
+                return review
+        return None
+
     def _require_supported(self, entity_type: type[KernelModel]) -> None:
         if entity_type not in SUPPORTED_ENTITY_TYPES:
             msg = f"{entity_type.__name__} is not supported by InMemoryStorage"

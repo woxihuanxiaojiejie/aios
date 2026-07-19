@@ -256,9 +256,11 @@ class ReviewRecord(Base):
         nullable=False,
         unique=True,
     )
-    actual_return: Mapped[float] = mapped_column(Float, nullable=False)
-    direction_correct: Mapped[bool] = mapped_column(nullable=False)
-    risk_limit_breached: Mapped[bool] = mapped_column(nullable=False)
+    actual_return: Mapped[Decimal | None] = mapped_column(
+        Numeric(24, 12), nullable=True
+    )
+    direction_correct: Mapped[bool | None] = mapped_column(nullable=True)
+    risk_limit_breached: Mapped[bool | None] = mapped_column(nullable=True)
     outcome: Mapped[str] = mapped_column(String(64), nullable=False)
     cause_tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
     review_summary: Mapped[str] = mapped_column(String, nullable=False)

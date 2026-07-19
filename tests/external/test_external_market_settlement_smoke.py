@@ -12,6 +12,7 @@ from aios.integrations.baostock.adapter import BaoStockMarketDataAdapter
 from aios.kernel.decision import Decision
 from aios.kernel.enums import Action, EvaluationFinalResult, OutcomeStatus
 from aios.kernel.experiment import Experiment
+from aios.kernel.review import Review
 from aios.storage.memory import InMemoryStorage
 from aios.workflows.decision_lifecycle import DecisionLifecycleService
 
@@ -71,6 +72,7 @@ def test_real_baostock_market_settlement_smoke() -> None:
     result = DecisionSettlementService(
         lifecycle=lifecycle,
         market_data_adapter=adapter,
+        llm_adapter=ForbiddenLLM(),
     ).settle(
         decision_id=decision.decision_id,
         as_of=datetime(2026, 7, 20, tzinfo=UTC),
@@ -96,6 +98,23 @@ def test_real_baostock_market_settlement_smoke() -> None:
         )
         == result.evaluation
     )
+    assert result.review.actual_return == result.outcome.realized_return
+    assert lifecycle.get_review_by_decision_id(decision.decision_id) == result.review
+    assert lifecycle.get_entity(Review, result.review.review_id) == result.review
+
+    repeated = DecisionSettlementService(
+        lifecycle=lifecycle,
+        market_data_adapter=adapter,
+        llm_adapter=ForbiddenLLM(),
+    ).settle(
+        decision_id=decision.decision_id,
+        as_of=datetime(2026, 7, 20, tzinfo=UTC),
+    )
+
+    assert repeated.outcome == result.outcome
+    assert repeated.evaluation == result.evaluation
+    assert repeated.review == result.review
+    assert len(lifecycle.list_entities(Review)) == 1
 
 
 class DecimalRange:
@@ -111,3 +130,8 @@ class DecimalRange:
         if not isinstance(value, Decimal):
             return False
         return self.lower <= value <= self.upper
+
+
+class ForbiddenLLM:
+    def generate_structured(self, **_kwargs: object) -> object:
+        raise AssertionError("settlement smoke must not call an LLM")

@@ -13,6 +13,7 @@ from aios.kernel.errors import (
     MissingEntityError,
     StorageOperationError,
 )
+from aios.kernel.review import Review
 from aios.kernel.settlement import DecisionEvaluation, DecisionOutcome
 from aios.storage.postgres.database import make_engine, make_session_factory
 from aios.storage.postgres.mapper import (
@@ -21,7 +22,11 @@ from aios.storage.postgres.mapper import (
     model_to_entity,
     to_model,
 )
-from aios.storage.postgres.models import DecisionEvaluationRecord, DecisionOutcomeRecord
+from aios.storage.postgres.models import (
+    DecisionEvaluationRecord,
+    DecisionOutcomeRecord,
+    ReviewRecord,
+)
 
 
 class PostgresStorage:
@@ -181,6 +186,22 @@ class PostgresStorage:
             return cast("DecisionEvaluation", model_to_entity(model))
         except SQLAlchemyError as exc:
             msg = f"failed to get DecisionEvaluation for decision {decision_id}"
+            raise StorageOperationError(msg) from exc
+        finally:
+            session.close()
+
+    def get_review_by_decision_id(self, decision_id: str) -> Review | None:
+        session = self._session_factory()
+        try:
+            statement = select(ReviewRecord).where(
+                ReviewRecord.decision_id == decision_id
+            )
+            model = session.scalars(statement).one_or_none()
+            if model is None:
+                return None
+            return cast("Review", model_to_entity(model))
+        except SQLAlchemyError as exc:
+            msg = f"failed to get Review for decision {decision_id}"
             raise StorageOperationError(msg) from exc
         finally:
             session.close()

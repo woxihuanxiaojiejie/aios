@@ -206,6 +206,12 @@ def test_migration_upgrade_downgrade_upgrade(postgres_url: str) -> None:
             "decision_outcomes",
             "decision_evaluations",
         } <= set(inspector.get_table_names())
+        review_columns = {
+            column["name"]: column for column in inspector.get_columns("reviews")
+        }
+        assert review_columns["actual_return"]["nullable"] is True
+        assert review_columns["direction_correct"]["nullable"] is True
+        assert review_columns["risk_limit_breached"]["nullable"] is True
     finally:
         engine.dispose()
 

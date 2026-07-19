@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Protocol, TypeVar
 
 from aios.kernel.base import KernelModel
+from aios.kernel.review import Review
 from aios.kernel.settlement import DecisionEvaluation, DecisionOutcome
 
 EntityT = TypeVar("EntityT", bound=KernelModel)
@@ -36,3 +37,6 @@ class Storage(Protocol):
         evaluation_rules_version: str,
     ) -> DecisionEvaluation | None:
         """Return the versioned evaluation for a Decision if one exists."""
+
+    def get_review_by_decision_id(self, decision_id: str) -> Review | None:
+        """Return the Review for a Decision if one exists."""

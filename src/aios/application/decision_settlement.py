@@ -13,6 +13,7 @@ from aios.kernel.enums import (
     DecisionStatus,
     DirectionalResult,
     EvaluationFinalResult,
+    Outcome,
     OutcomeStatus,
     ReturnResult,
     RiskResult,
@@ -24,8 +25,11 @@ from aios.kernel.errors import (
     ExperimentNotFoundError,
     InsufficientMarketDataError,
     MissingEntityError,
+    ReviewConsistencyError,
+    SettlementReviewMappingError,
 )
 from aios.kernel.experiment import Experiment
+from aios.kernel.review import Review
 from aios.kernel.settlement import DecisionEvaluation, DecisionOutcome
 from aios.workflows.decision_lifecycle import DecisionLifecycleService
 
@@ -44,6 +48,7 @@ NEUTRAL_ACTIONS = {Action.HOLD, Action.OBSERVE, Action.NO_TRADE}
 class DecisionSettlementResult:
     outcome: DecisionOutcome
     evaluation: DecisionEvaluation
+    review: Review
 
 
 class DecisionSettlementService:
@@ -71,12 +76,13 @@ class DecisionSettlementService:
         decision_id: str,
         as_of: datetime | None = None,
     ) -> DecisionSettlementResult:
-        existing = self._existing_result(decision_id)
+        decision = self._decision(decision_id)
+        self._experiment(decision.experiment_id)
+
+        existing = self._existing_result(decision, as_of=as_of)
         if existing is not None:
             return existing
 
-        decision = self._decision(decision_id)
-        self._experiment(decision.experiment_id)
         now = self._as_utc(as_of or utc_now())
         self._ensure_supported_horizon(decision.horizon)
         if now < decision.valid_until:
@@ -91,20 +97,109 @@ class DecisionSettlementService:
         saved_outcome = self._lifecycle.settle_decision(outcome)
         evaluation = self._evaluate(decision, saved_outcome, evaluated_at=now)
         saved_evaluation = self._lifecycle.evaluate_decision(evaluation)
+        saved_review = self._get_or_create_review(saved_outcome, saved_evaluation)
         return DecisionSettlementResult(
             outcome=saved_outcome,
             evaluation=saved_evaluation,
+            review=saved_review,
         )
 
-    def _existing_result(self, decision_id: str) -> DecisionSettlementResult | None:
-        outcome = self._lifecycle.get_decision_outcome(decision_id)
+    def _existing_result(
+        self,
+        decision: Decision,
+        *,
+        as_of: datetime | None,
+    ) -> DecisionSettlementResult | None:
+        outcome = self._lifecycle.get_decision_outcome(decision.decision_id)
         evaluation = self._lifecycle.get_decision_evaluation(
-            decision_id,
+            decision.decision_id,
             self._evaluation_rules_version,
         )
-        if outcome is None or evaluation is None:
+        if outcome is None and evaluation is None:
             return None
-        return DecisionSettlementResult(outcome=outcome, evaluation=evaluation)
+        if outcome is None:
+            msg = f"DecisionOutcome for decision {decision.decision_id} does not exist"
+            raise SettlementReviewMappingError(msg)
+        if evaluation is None:
+            evaluated_at = self._as_utc(as_of or utc_now())
+            evaluation = self._lifecycle.evaluate_decision(
+                self._evaluate(decision, outcome, evaluated_at=evaluated_at)
+            )
+        review = self._get_or_create_review(outcome, evaluation)
+        return DecisionSettlementResult(
+            outcome=outcome,
+            evaluation=evaluation,
+            review=review,
+        )
+
+    def _get_or_create_review(
+        self,
+        outcome: DecisionOutcome,
+        evaluation: DecisionEvaluation,
+    ) -> Review:
+        expected = self.review_from_settlement(outcome, evaluation)
+        existing = self._lifecycle.get_review_by_decision_id(expected.decision_id)
+        if existing is not None:
+            self._ensure_review_consistent(existing, expected)
+            return existing
+        try:
+            return self._lifecycle.create_review(expected)
+        except Exception as exc:
+            if isinstance(exc, ReviewConsistencyError | SettlementReviewMappingError):
+                raise
+            msg = (
+                f"failed to create settlement Review for decision {outcome.decision_id}"
+            )
+            raise SettlementReviewMappingError(msg) from exc
+
+    @staticmethod
+    def review_from_settlement(
+        outcome: DecisionOutcome,
+        evaluation: DecisionEvaluation,
+    ) -> Review:
+        _validate_review_inputs(outcome, evaluation)
+        actual_return = outcome.realized_return
+        direction_correct = _direction_correct(evaluation.directional_result)
+        risk_limit_breached = _risk_limit_breached(evaluation.risk_result)
+        review_outcome = _review_outcome(outcome, evaluation)
+        cause_tags = _cause_tags(
+            outcome,
+            evaluation,
+            direction_correct=direction_correct,
+            risk_limit_breached=risk_limit_breached,
+        )
+        return Review(
+            decision_id=outcome.decision_id,
+            actual_return=actual_return,
+            direction_correct=direction_correct,
+            risk_limit_breached=risk_limit_breached,
+            outcome=review_outcome,
+            cause_tags=cause_tags,
+            review_summary=_review_summary(
+                review_outcome,
+                evaluation.directional_result,
+                evaluation.risk_result,
+            ),
+            created_at=evaluation.evaluated_at,
+        )
+
+    def _ensure_review_consistent(self, existing: Review, expected: Review) -> None:
+        fields = (
+            "decision_id",
+            "actual_return",
+            "direction_correct",
+            "risk_limit_breached",
+            "outcome",
+            "cause_tags",
+            "review_summary",
+        )
+        for field in fields:
+            if getattr(existing, field) != getattr(expected, field):
+                msg = (
+                    f"Review {existing.review_id} conflicts with settlement details "
+                    f"for decision {existing.decision_id}"
+                )
+                raise ReviewConsistencyError(msg)
 
     def _decision(self, decision_id: str) -> Decision:
         try:
@@ -464,3 +559,132 @@ def _required_decimal(value: Decimal | None, field_name: str) -> Decimal:
         msg = f"{field_name} is required"
         raise EvaluationConfigurationError(msg)
     return value
+
+
+def _validate_review_inputs(
+    outcome: DecisionOutcome,
+    evaluation: DecisionEvaluation,
+) -> None:
+    if outcome.decision_id != evaluation.decision_id:
+        msg = "DecisionOutcome and DecisionEvaluation decision_id must match"
+        raise SettlementReviewMappingError(msg)
+    if outcome.outcome_id != evaluation.outcome_id:
+        msg = "DecisionEvaluation outcome_id must match DecisionOutcome"
+        raise SettlementReviewMappingError(msg)
+    if outcome.experiment_id != evaluation.experiment_id:
+        msg = "DecisionOutcome and DecisionEvaluation experiment_id must match"
+        raise SettlementReviewMappingError(msg)
+
+
+def _direction_correct(result: DirectionalResult) -> bool | None:
+    if result is DirectionalResult.CORRECT:
+        return True
+    if result is DirectionalResult.INCORRECT:
+        return False
+    if result in {DirectionalResult.NEUTRAL, DirectionalResult.NOT_APPLICABLE}:
+        return None
+    msg = f"cannot map directional_result {result}"
+    raise SettlementReviewMappingError(msg)
+
+
+def _risk_limit_breached(result: RiskResult) -> bool | None:
+    if result is RiskResult.BREACHED:
+        return True
+    if result is RiskResult.WITHIN_LIMIT:
+        return False
+    if result is RiskResult.NOT_APPLICABLE:
+        return None
+    msg = f"cannot map risk_result {result}"
+    raise SettlementReviewMappingError(msg)
+
+
+def _review_outcome(
+    outcome: DecisionOutcome,
+    evaluation: DecisionEvaluation,
+) -> Outcome:
+    if (
+        outcome.status is OutcomeStatus.INVALIDATED
+        or evaluation.final_result is EvaluationFinalResult.INVALID
+    ):
+        return Outcome.INVALID
+    if (
+        outcome.status is OutcomeStatus.INSUFFICIENT_DATA
+        or evaluation.final_result is EvaluationFinalResult.INCONCLUSIVE
+    ) and outcome.realized_return is None:
+        return Outcome.INVALID
+    if outcome.realized_return is None:
+        msg = "DecisionOutcome realized_return is required to map Review outcome"
+        raise SettlementReviewMappingError(msg)
+    if outcome.realized_return > 0:
+        return Outcome.PROFIT
+    if outcome.realized_return < 0:
+        return Outcome.LOSS
+    if outcome.realized_return == 0:
+        return Outcome.FLAT
+    msg = "DecisionOutcome realized_return could not be mapped"
+    raise SettlementReviewMappingError(msg)
+
+
+def _cause_tags(
+    outcome: DecisionOutcome,
+    evaluation: DecisionEvaluation,
+    *,
+    direction_correct: bool | None,
+    risk_limit_breached: bool | None,
+) -> tuple[str, ...]:
+    tags: set[str] = set()
+    if direction_correct is True:
+        tags.add("direction_correct")
+    elif direction_correct is False:
+        tags.add("direction_incorrect")
+    elif evaluation.directional_result is DirectionalResult.NEUTRAL:
+        tags.add("neutral_decision")
+    else:
+        tags.add("direction_not_applicable")
+
+    if outcome.status is OutcomeStatus.INSUFFICIENT_DATA:
+        tags.add("insufficient_market_data")
+    elif outcome.status is OutcomeStatus.INVALIDATED:
+        tags.add("invalidated_decision")
+    elif outcome.realized_return is not None:
+        if outcome.realized_return > 0:
+            tags.add("positive_return")
+        elif outcome.realized_return < 0:
+            tags.add("negative_return")
+        else:
+            tags.add("flat_return")
+
+    if risk_limit_breached is True:
+        tags.add("risk_limit_breached")
+    elif risk_limit_breached is False:
+        tags.add("risk_limit_respected")
+
+    if evaluation.final_result is EvaluationFinalResult.INCONCLUSIVE:
+        tags.add("evaluation_inconclusive")
+
+    return tuple(sorted(tags))
+
+
+def _review_summary(
+    outcome: Outcome,
+    directional_result: DirectionalResult,
+    risk_result: RiskResult,
+) -> str:
+    return_sentence = {
+        Outcome.PROFIT: "Decision settled with a positive realized return.",
+        Outcome.LOSS: "Decision settled with a negative realized return.",
+        Outcome.FLAT: "Decision settled with a flat realized return.",
+        Outcome.INVALID: "Decision settlement could not produce a valid return review.",
+    }[outcome]
+    direction_sentence = {
+        DirectionalResult.CORRECT: "Directional evaluation was correct",
+        DirectionalResult.INCORRECT: "Directional evaluation was incorrect",
+        DirectionalResult.NEUTRAL: "Directional evaluation was neutral",
+        DirectionalResult.NOT_APPLICABLE: "Directional evaluation was not applicable",
+    }[directional_result]
+    risk_sentence = {
+        RiskResult.BREACHED: "and the expected loss limit was breached.",
+        RiskResult.WITHIN_LIMIT: "and the expected loss limit was not breached.",
+        RiskResult.NOT_APPLICABLE: "and the expected loss limit was not evaluated.",
+    }[risk_result]
+    return f"{return_sentence} {direction_sentence} {risk_sentence}"
