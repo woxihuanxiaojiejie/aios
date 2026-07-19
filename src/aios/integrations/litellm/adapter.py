@@ -32,32 +32,23 @@ class LiteLLMAdapter:
         temperature: float,
     ) -> LLMStructuredResult:
         completion_func = self._completion_func or self._completion
+        provider = _provider(model)
         started = time.perf_counter()
-        try:
-            response = completion_func(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=temperature,
-                response_format={
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": response_schema.__name__,
-                        "schema": response_schema.model_json_schema(),
-                        "strict": True,
-                    },
-                },
-            )
-        except Exception as exc:
-            raise self._map_exception(exc) from exc
+        response = self._complete_with_provider_response_format(
+            completion_func=completion_func,
+            provider=provider,
+            model=model,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            response_schema=response_schema,
+            temperature=temperature,
+        )
         latency_ms = int((time.perf_counter() - started) * 1000)
         parsed = self._parse_response(response, response_schema)
         usage = _usage(response)
         return LLMStructuredResult(
             parsed=parsed,
-            provider=_provider(model),
+            provider=provider,
             model=str(getattr(response, "model", model) or model),
             request_id=_optional_str(getattr(response, "id", None)),
             prompt_tokens=_optional_int(usage.get("prompt_tokens")),
@@ -66,6 +57,69 @@ class LiteLLMAdapter:
             latency_ms=latency_ms,
             raw_finish_reason=_finish_reason(response),
         )
+
+    def _complete_with_provider_response_format(
+        self,
+        *,
+        completion_func: Callable[..., Any],
+        provider: str,
+        model: str,
+        system_prompt: str,
+        user_prompt: str,
+        response_schema: type[BaseModel],
+        temperature: float,
+    ) -> Any:
+        attempts = self._response_format_attempts(provider, response_schema)
+        for index, response_format in enumerate(attempts):
+            try:
+                return completion_func(
+                    model=model,
+                    messages=_messages(
+                        system_prompt=system_prompt,
+                        user_prompt=user_prompt,
+                        require_json=response_format is None,
+                    ),
+                    temperature=temperature,
+                    **_response_format_kwargs(response_format),
+                )
+            except Exception as exc:
+                mapped = self._map_exception(exc)
+                can_retry_without_format = (
+                    provider == "deepseek"
+                    and isinstance(mapped, LLMConfigurationError)
+                    and response_format is not None
+                    and index + 1 < len(attempts)
+                )
+                if can_retry_without_format:
+                    continue
+                raise mapped from exc
+        msg = "LLM request could not be completed"
+        raise LLMUpstreamError(msg)
+
+    def _json_schema_response_format(
+        self,
+        response_schema: type[BaseModel],
+    ) -> dict[str, Any]:
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": response_schema.__name__,
+                "schema": response_schema.model_json_schema(),
+                "strict": True,
+            },
+        }
+
+    def _deepseek_response_format(self) -> dict[str, str]:
+        return {"type": "json_object"}
+
+    def _response_format_attempts(
+        self,
+        provider: str,
+        response_schema: type[BaseModel],
+    ) -> tuple[dict[str, Any] | None, ...]:
+        if provider == "deepseek":
+            return (self._deepseek_response_format(), None)
+        return (self._json_schema_response_format(response_schema),)
 
     def _completion(self, **kwargs: Any) -> Any:
         from litellm import completion  # type: ignore[import-not-found]
@@ -107,6 +161,28 @@ class LiteLLMAdapter:
         except (json.JSONDecodeError, ValidationError) as exc:
             msg = "LLM response failed structured output validation"
             raise LLMStructuredOutputError(msg) from exc
+
+
+def _messages(
+    *,
+    system_prompt: str,
+    user_prompt: str,
+    require_json: bool,
+) -> list[dict[str, str]]:
+    if require_json:
+        system_prompt = (
+            f"{system_prompt}\n"
+            "Return only a JSON object matching the requested schema. "
+            "Do not wrap it in Markdown."
+        )
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+
+
+def _response_format_kwargs(response_format: dict[str, Any] | None) -> dict[str, Any]:
+    return {} if response_format is None else {"response_format": response_format}
 
 
 def _message_content(response: Any) -> Any:
