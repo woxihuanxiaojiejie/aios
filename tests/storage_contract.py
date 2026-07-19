@@ -54,3 +54,30 @@ def assert_storage_contract(storage_factory: Callable[[], object]) -> None:
 
     with pytest.raises(UnsupportedEntityError, match="UnsupportedEntity"):
         storage.save(UnsupportedEntity())
+
+    replacement = Evidence(
+        evidence_id=first.evidence_id,
+        evidence_type=first.evidence_type,
+        source=first.source,
+        symbols=first.symbols,
+        published_at=first.published_at,
+        available_at=first.available_at,
+        summary="replacement summary",
+        reliability=first.reliability,
+        content_hash=first.content_hash,
+        metadata=first.metadata,
+        created_at=first.created_at,
+    )
+    storage.replace(replacement)
+
+    assert storage.get(Evidence, first.evidence_id) == replacement
+    assert storage.get(Evidence, first.evidence_id).evidence_id == first.evidence_id
+
+    missing_replacement = make_evidence(
+        evidence_id="ev_00000000-0000-0000-0000-000000009999"
+    )
+    with pytest.raises(MissingEntityError):
+        storage.replace(missing_replacement)
+
+    with pytest.raises(UnsupportedEntityError, match="UnsupportedEntity"):
+        storage.replace(UnsupportedEntity())

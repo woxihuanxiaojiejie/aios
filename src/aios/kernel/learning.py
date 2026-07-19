@@ -32,7 +32,4 @@ class Learning(KernelModel):
         if self.before == self.after:
             msg = "before and after must not be identical"
             raise ValueError(msg)
-        if self.approval_status is not ApprovalStatus.PENDING:
-            msg = "V0.1 learning proposals must remain pending"
-            raise ValueError(msg)
         return self

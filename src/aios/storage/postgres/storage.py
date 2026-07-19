@@ -63,6 +63,36 @@ class PostgresStorage:
         finally:
             session.close()
 
+    def replace(self, entity: KernelModel) -> None:
+        model = to_model(entity)
+        model_type = type(model)
+        session = self._session_factory()
+        try:
+            if session.get(model_type, entity.entity_id) is None:
+                msg = (
+                    f"{type(entity).__name__} with id {entity.entity_id} does not exist"
+                )
+                raise MissingEntityError(msg)
+            session.merge(model)
+            session.commit()
+        except MissingEntityError:
+            session.rollback()
+            raise
+        except IntegrityError as exc:
+            session.rollback()
+            msg = (
+                f"failed to replace {type(entity).__name__} with id {entity.entity_id}"
+            )
+            raise StorageOperationError(msg) from exc
+        except SQLAlchemyError as exc:
+            session.rollback()
+            msg = (
+                f"failed to replace {type(entity).__name__} with id {entity.entity_id}"
+            )
+            raise StorageOperationError(msg) from exc
+        finally:
+            session.close()
+
     def get[EntityT: KernelModel](
         self, entity_type: type[EntityT], entity_id: str
     ) -> EntityT:

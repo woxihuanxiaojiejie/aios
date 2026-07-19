@@ -39,6 +39,15 @@ class InMemoryStorage:
             raise DuplicateEntityError(msg)
         self._entities[entity_type][entity_id] = entity
 
+    def replace(self, entity: KernelModel) -> None:
+        self._require_supported(type(entity))
+        entity_type = type(entity)
+        entity_id = entity.entity_id
+        if entity_id not in self._entities[entity_type]:
+            msg = f"{entity_type.__name__} with id {entity_id} does not exist"
+            raise MissingEntityError(msg)
+        self._entities[entity_type][entity_id] = entity
+
     def get[EntityT: KernelModel](
         self, entity_type: type[EntityT], entity_id: str
     ) -> EntityT:

@@ -24,3 +24,7 @@ class DatabaseConfigurationError(AiosError):
 
 class StorageOperationError(AiosError):
     """Raised when a storage operation fails without leaking adapter errors."""
+
+
+class InvalidStateTransitionError(AiosError):
+    """Raised when a controlled state transition is not allowed."""

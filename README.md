@@ -7,10 +7,14 @@ decision lifecycle kernel:
 Evidence -> Experiment -> Decision -> Review -> Learning
 ```
 
-This repository is intentionally narrow. It does not include APIs, schedulers,
-trading adapters, agent frameworks, RAG frameworks, backtesting engines, broker
+This repository is intentionally narrow. It does not include schedulers, trading
+adapters, agent frameworks, RAG frameworks, backtesting engines, broker
 integrations, or UI code. PostgreSQL support is implemented only as a storage
-adapter behind the kernel storage protocol.
+adapter behind the kernel storage protocol, and the HTTP API is a thin lifecycle
+boundary over the existing service.
+
+The HTTP API is currently intended only for local development and trusted
+networks. Do not expose it directly to the public internet.
 
 ## Requirements
 
@@ -28,7 +32,7 @@ uv sync
 For PostgreSQL storage, configure:
 
 ```bash
-export AIOS_DATABASE_URL=postgresql+psycopg://aios:aios@localhost:5432/aios
+export AIOS_DATABASE_URL=postgresql+psycopg://localhost:5432/aios
 ```
 
 Use `.env.example` as the local template. Do not commit `.env`.
@@ -75,6 +79,50 @@ uv run mypy src
 uv run pytest -q
 uv run pytest --cov=aios --cov-report=term-missing --cov-fail-under=90
 ```
+
+## HTTP API
+
+Run the API against PostgreSQL:
+
+```bash
+export AIOS_DATABASE_URL='postgresql+psycopg://localhost:5432/aios'
+uv run alembic upgrade head
+uv run uvicorn aios.api.app:create_default_app --factory
+```
+
+For local development with in-memory storage, use an explicit factory:
+
+```bash
+uv run python -c "import uvicorn; from aios.api.app import create_app; from aios.storage.memory import InMemoryStorage; uvicorn.run(create_app(storage=InMemoryStorage()))"
+```
+
+Available routes:
+
+```text
+GET  /health
+GET  /api/v1/health
+POST /api/v1/evidence
+GET  /api/v1/evidence
+GET  /api/v1/evidence/{evidence_id}
+POST /api/v1/experiments
+GET  /api/v1/experiments
+GET  /api/v1/experiments/{experiment_id}
+POST /api/v1/experiments/{experiment_id}/complete
+POST /api/v1/decisions
+GET  /api/v1/decisions
+GET  /api/v1/decisions/{decision_id}
+POST /api/v1/reviews
+GET  /api/v1/reviews
+GET  /api/v1/reviews/{review_id}
+POST /api/v1/learnings
+GET  /api/v1/learnings
+GET  /api/v1/learnings/{learning_id}
+POST /api/v1/learnings/{learning_id}/approve
+POST /api/v1/learnings/{learning_id}/reject
+```
+
+List endpoints support `limit` and `offset`. `limit` defaults to 50 and is capped
+at 200.
 
 ## Minimal Usage
 
@@ -175,7 +223,7 @@ for tests or local scripts:
 
 ```python
 storage = PostgresStorage(
-    "postgresql+psycopg://aios:aios@localhost:5432/aios"
+    "postgresql+psycopg://localhost:5432/aios"
 )
 ```
 
