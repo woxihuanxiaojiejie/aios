@@ -69,6 +69,8 @@ def market_bar(
     trade_date: date = date(2026, 7, 1),
     close: Decimal = Decimal("10.50"),
     fetched_at: datetime = datetime(2026, 7, 1, 8, 0, tzinfo=UTC),
+    source: str = "akshare.stock_zh_a_hist",
+    adjustment: Adjustment = Adjustment.QFQ,
 ) -> MarketBar:
     return MarketBar(
         symbol="000001.SZ",
@@ -80,11 +82,58 @@ def market_bar(
         close=close,
         volume=Decimal("1000"),
         amount=Decimal("10500.50"),
-        adjustment=Adjustment.QFQ,
-        source="akshare.stock_zh_a_hist",
+        adjustment=adjustment,
+        source=source,
         fetched_at=fetched_at,
     )
 
 
 def tomorrow_before_close() -> datetime:
     return datetime.now(UTC) + timedelta(days=1)
+
+
+def baostock_row(**overrides: Any) -> dict[str, str]:
+    row = {
+        "date": "2026-07-01",
+        "code": "sz.000001",
+        "open": "10.10",
+        "high": "10.80",
+        "low": "10.00",
+        "close": "10.50",
+        "volume": "1000",
+        "amount": "10500.50",
+        "adjustflag": "2",
+    }
+    row.update(overrides)
+    return row
+
+
+class FakeBaoStockClient:
+    def __init__(
+        self,
+        rows: list[dict[str, str]] | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        self.rows = rows if rows is not None else [baostock_row()]
+        self.error = error
+        self.calls: list[dict[str, str]] = []
+
+    def query_daily_bars(
+        self,
+        *,
+        code: str,
+        start_date: str,
+        end_date: str,
+        adjustflag: str,
+    ) -> list[dict[str, str]]:
+        self.calls.append(
+            {
+                "code": code,
+                "start_date": start_date,
+                "end_date": end_date,
+                "adjustflag": adjustflag,
+            }
+        )
+        if self.error is not None:
+            raise self.error
+        return self.rows

@@ -1,0 +1,1 @@
+"""BaoStock market data integration."""

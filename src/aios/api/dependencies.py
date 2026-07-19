@@ -17,6 +17,10 @@ def get_market_data_adapter(request: Request) -> MarketDataAdapter:
     return cast("MarketDataAdapter", request.app.state.market_data_adapter)
 
 
+def get_baostock_market_data_adapter(request: Request) -> MarketDataAdapter:
+    return cast("MarketDataAdapter", request.app.state.baostock_market_data_adapter)
+
+
 def get_lifecycle(
     storage: Annotated[Storage, Depends(get_storage)],
 ) -> DecisionLifecycleService:
@@ -27,4 +31,8 @@ LifecycleDep = Annotated[DecisionLifecycleService, Depends(get_lifecycle)]
 MarketDataAdapterDep = Annotated[
     MarketDataAdapter,
     Depends(get_market_data_adapter),
+]
+BaoStockMarketDataAdapterDep = Annotated[
+    MarketDataAdapter,
+    Depends(get_baostock_market_data_adapter),
 ]

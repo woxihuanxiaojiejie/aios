@@ -11,8 +11,9 @@ This repository is intentionally narrow. It does not include schedulers, trading
 adapters, agent frameworks, RAG frameworks, backtesting engines, broker
 integrations, or UI code. PostgreSQL support is implemented only as a storage
 adapter behind the kernel storage protocol, and the HTTP API is a thin lifecycle
-boundary over the existing service. AKShare support is limited to one market
-data adapter that imports A-share daily bars as `Evidence`.
+boundary over the existing service. AKShare and BaoStock support are independent
+market-data providers that use the same `MarketDataAdapter` protocol to import
+A-share daily bars as `Evidence`.
 
 The HTTP API is currently intended only for local development and trusted
 networks. Do not expose it directly to the public internet.
@@ -30,10 +31,11 @@ networks. Do not expose it directly to the public internet.
 uv sync
 ```
 
-Install the optional AKShare dependency only when using market-data ingestion:
+Install optional market-data dependencies only when using those providers:
 
 ```bash
 uv sync --extra market-data
+uv sync --extra market-data-baostock
 ```
 
 For PostgreSQL storage, configure:
@@ -61,8 +63,8 @@ uv run pytest tests/integration -q
 The test suite includes unit coverage for entity validation, storage behavior,
 mapper round trips, database exception mapping, PostgreSQL constraints, Alembic
 migrations, market-data mapping, and full lifecycle persistence. Default tests
-use fakes for AKShare and do not access the public network. Coverage must stay
-at or above 90%.
+use fakes for AKShare and BaoStock and do not access the public network.
+Coverage must stay at or above 90%.
 
 ## Migrations
 
@@ -130,6 +132,8 @@ POST /api/v1/learnings/{learning_id}/approve
 POST /api/v1/learnings/{learning_id}/reject
 POST /api/v1/market-data/akshare/daily-bars/preview
 POST /api/v1/market-data/akshare/daily-bars/import
+POST /api/v1/market-data/baostock/daily-bars/preview
+POST /api/v1/market-data/baostock/daily-bars/import
 ```
 
 List endpoints support `limit` and `offset`. `limit` defaults to 50 and is capped
@@ -158,9 +162,38 @@ curl -X POST http://127.0.0.1:8000/api/v1/market-data/akshare/daily-bars/import 
 ```
 
 AKShare is used here for research data ingestion. Its upstream interface can
-change, and historical responses are not strict point-in-time datasets. Imported
-metadata records `historical_point_in_time_guarantee: false`; this feature should
-not be used directly for live trading decisions.
+change, and historical responses are not strict point-in-time datasets. In the
+current environment, a real AKShare smoke call failed with an upstream
+connection close from the Eastmoney path; this does not indicate an AIOS Kernel
+failure.
+
+### BaoStock Market Data
+
+The BaoStock adapter wraps only `login()`, `query_history_k_data_plus(...)`, and
+`logout()` for A-share daily bars. API symbols use the same `000001.SZ` or
+`600000.SH` form and are mapped to BaoStock codes such as `sz.000001` and
+`sh.600000`.
+
+Preview standardized BaoStock bars:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/market-data/baostock/daily-bars/preview \
+  -H 'content-type: application/json' \
+  -d '{"symbol":"000001.SZ","start_date":"2026-07-13","end_date":"2026-07-17","adjustment":"none"}'
+```
+
+Import BaoStock bars as `Evidence`:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/market-data/baostock/daily-bars/import \
+  -H 'content-type: application/json' \
+  -d '{"symbol":"000001.SZ","start_date":"2026-07-13","end_date":"2026-07-17","adjustment":"qfq"}'
+```
+
+Imported market-data metadata records
+`historical_point_in_time_guarantee: false`. Data source availability or
+upstream failure is separate from AIOS Kernel correctness, and these interfaces
+must not be used directly for live trading decisions.
 
 ## Minimal Usage
 

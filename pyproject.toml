@@ -17,6 +17,9 @@ dependencies = [
 market-data = [
     "akshare>=1.15,<2",
 ]
+market-data-baostock = [
+    "baostock>=0.8,<1",
+]
 
 [dependency-groups]
 dev = [

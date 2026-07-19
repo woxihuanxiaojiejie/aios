@@ -4,11 +4,11 @@ from dataclasses import dataclass
 from datetime import date
 
 from aios.adapters.market_data import Adjustment, MarketBar, MarketDataAdapter
-from aios.integrations.akshare.errors import (
+from aios.adapters.market_errors import (
     MarketDataDateRangeError,
     UnsupportedAdjustmentError,
 )
-from aios.integrations.akshare.mapper import (
+from aios.adapters.market_evidence import (
     market_bar_content_hash,
     market_bar_to_evidence,
 )
@@ -66,7 +66,6 @@ class MarketEvidenceImportService:
             evidence.content_hash: evidence
             for evidence in self._lifecycle.list_entities(Evidence)
             if evidence.evidence_type == "market_daily_bar"
-            and evidence.source == "akshare.stock_zh_a_hist"
         }
         existing_by_key = {
             self._idempotency_key(evidence): evidence
@@ -78,7 +77,12 @@ class MarketEvidenceImportService:
         existing = 0
         for bar in bars:
             content_hash = market_bar_content_hash(bar)
-            key = (bar.symbol, bar.trade_date.isoformat(), bar.adjustment.value)
+            key = (
+                bar.source,
+                bar.symbol,
+                bar.trade_date.isoformat(),
+                bar.adjustment.value,
+            )
             if content_hash in existing_by_hash:
                 evidence = existing_by_hash[content_hash]
                 evidence_ids.append(evidence.evidence_id)
@@ -130,9 +134,10 @@ class MarketEvidenceImportService:
             msg = f"Unsupported adjustment: {adjustment}"
             raise UnsupportedAdjustmentError(msg) from exc
 
-    def _idempotency_key(self, evidence: Evidence) -> tuple[str, str, str]:
+    def _idempotency_key(self, evidence: Evidence) -> tuple[str, str, str, str]:
         market_bar = evidence.metadata.get("market_bar", {})
         return (
+            evidence.source,
             str(market_bar.get("symbol", "")),
             str(market_bar.get("trade_date", "")),
             str(market_bar.get("adjustment", "")),
