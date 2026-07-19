@@ -4,7 +4,10 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from aios.integrations.litellm.adapter import LiteLLMAdapter
+from aios.integrations.litellm.adapter import (
+    LiteLLMAdapter,
+    validate_llm_runtime_config,
+)
 from aios.integrations.litellm.errors import (
     LLMConfigurationError,
     LLMStructuredOutputError,
@@ -97,3 +100,44 @@ def test_litellm_adapter_missing_sdk_maps_to_configuration_error() -> None:
             response_schema=DecisionDraft,
             temperature=0,
         )
+
+
+def test_runtime_config_requires_model() -> None:
+    with pytest.raises(LLMConfigurationError, match="AIOS_EXTERNAL_LLM_MODEL"):
+        validate_llm_runtime_config("", {})
+
+
+def test_runtime_config_requires_provider_key() -> None:
+    with pytest.raises(LLMConfigurationError, match="DEEPSEEK_API_KEY"):
+        validate_llm_runtime_config("deepseek/deepseek-chat", {})
+
+
+def test_runtime_config_rejects_mismatched_provider_key() -> None:
+    with pytest.raises(LLMConfigurationError, match="DEEPSEEK_API_KEY"):
+        validate_llm_runtime_config(
+            "deepseek/deepseek-chat",
+            {"OPENAI_API_KEY": "openai-test-token"},
+        )
+
+
+def test_runtime_config_rejects_invalid_base_url() -> None:
+    with pytest.raises(LLMConfigurationError, match="DEEPSEEK_API_BASE"):
+        validate_llm_runtime_config(
+            "deepseek/deepseek-chat",
+            {
+                "DEEPSEEK_API_KEY": "deepseek-test-token",
+                "DEEPSEEK_API_BASE": "not-a-url",
+            },
+        )
+
+
+def test_runtime_config_returns_provider_specific_credentials() -> None:
+    config = validate_llm_runtime_config(
+        "deepseek/deepseek-chat",
+        {"DEEPSEEK_API_KEY": "deepseek-test-token"},
+    )
+
+    assert config.provider == "deepseek"
+    assert config.model == "deepseek/deepseek-chat"
+    assert config.api_key == "deepseek-test-token"
+    assert config.api_base == "https://api.deepseek.com/beta"

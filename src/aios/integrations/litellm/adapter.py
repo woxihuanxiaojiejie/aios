@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, ValidationError
 
@@ -16,6 +19,29 @@ from aios.integrations.litellm.errors import (
     LLMTimeoutError,
     LLMUpstreamError,
 )
+
+DEFAULT_BASE_URLS = {
+    "deepseek": "https://api.deepseek.com/beta",
+    "openai": "https://api.openai.com/v1",
+}
+
+PROVIDER_API_KEY_ENV = {
+    "deepseek": "DEEPSEEK_API_KEY",
+    "openai": "OPENAI_API_KEY",
+}
+
+PROVIDER_API_BASE_ENV = {
+    "deepseek": "DEEPSEEK_API_BASE",
+    "openai": "OPENAI_API_BASE",
+}
+
+
+@dataclass(frozen=True)
+class LLMRuntimeConfig:
+    provider: str
+    model: str
+    api_key: str
+    api_base: str
 
 
 class LiteLLMAdapter:
@@ -33,6 +59,11 @@ class LiteLLMAdapter:
     ) -> LLMStructuredResult:
         completion_func = self._completion_func or self._completion
         provider = _provider(model)
+        runtime_config = (
+            None
+            if self._completion_func is not None
+            else validate_llm_runtime_config(model, os.environ)
+        )
         started = time.perf_counter()
         response = self._complete_with_provider_response_format(
             completion_func=completion_func,
@@ -42,6 +73,8 @@ class LiteLLMAdapter:
             user_prompt=user_prompt,
             response_schema=response_schema,
             temperature=temperature,
+            api_key=runtime_config.api_key if runtime_config else None,
+            api_base=runtime_config.api_base if runtime_config else None,
         )
         latency_ms = int((time.perf_counter() - started) * 1000)
         parsed = self._parse_response(response, response_schema)
@@ -68,6 +101,8 @@ class LiteLLMAdapter:
         user_prompt: str,
         response_schema: type[BaseModel],
         temperature: float,
+        api_key: str | None,
+        api_base: str | None,
     ) -> Any:
         attempts = self._response_format_attempts(provider, response_schema)
         for index, response_format in enumerate(attempts):
@@ -80,6 +115,8 @@ class LiteLLMAdapter:
                         require_json=response_format is None,
                     ),
                     temperature=temperature,
+                    api_key=api_key,
+                    api_base=api_base,
                     **_response_format_kwargs(response_format),
                 )
             except Exception as exc:
@@ -185,6 +222,47 @@ def _messages(
 
 def _response_format_kwargs(response_format: dict[str, Any] | None) -> dict[str, Any]:
     return {} if response_format is None else {"response_format": response_format}
+
+
+def validate_llm_runtime_config(
+    model: str,
+    environ: Mapping[str, str],
+) -> LLMRuntimeConfig:
+    if not model.strip():
+        msg = "AIOS_EXTERNAL_LLM_MODEL must be set for real LLM calls"
+        raise LLMConfigurationError(msg)
+    provider = _provider(model)
+    if provider == "unknown" or not model.split("/", maxsplit=1)[1].strip():
+        msg = "AIOS_EXTERNAL_LLM_MODEL must use a provider-prefixed model"
+        raise LLMConfigurationError(msg)
+    if provider not in PROVIDER_API_KEY_ENV:
+        supported = ", ".join(sorted(PROVIDER_API_KEY_ENV))
+        msg = f"unsupported LLM provider {provider}; supported providers: {supported}"
+        raise LLMConfigurationError(msg)
+
+    api_key_env = PROVIDER_API_KEY_ENV[provider]
+    api_key = environ.get(api_key_env, "").strip()
+    if not api_key:
+        msg = f"{api_key_env} must be set for {provider} model {model}"
+        raise LLMConfigurationError(msg)
+
+    api_base_env = PROVIDER_API_BASE_ENV[provider]
+    api_base = environ.get(api_base_env, DEFAULT_BASE_URLS[provider]).strip()
+    if not _valid_url(api_base):
+        msg = f"{api_base_env} must be an absolute http(s) URL"
+        raise LLMConfigurationError(msg)
+
+    return LLMRuntimeConfig(
+        provider=provider,
+        model=model,
+        api_key=api_key,
+        api_base=api_base,
+    )
+
+
+def _valid_url(value: str) -> bool:
+    parsed = urlparse(value)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
 def _litellm_error(module: Any, name: str) -> type[Exception] | tuple[()]:

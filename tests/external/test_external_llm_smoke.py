@@ -15,7 +15,7 @@ from aios.kernel.experiment import Experiment
 from aios.storage.memory import InMemoryStorage
 from aios.workflows.decision_lifecycle import DecisionLifecycleService
 
-load_dotenv()
+load_dotenv(override=True)
 
 
 @pytest.mark.external_llm
@@ -62,4 +62,7 @@ def test_real_litellm_decision_generation_smoke() -> None:
     )
 
     assert storage.get(type(result.decision), result.decision.decision_id)
+    assert result.generation.provider == model.split("/", maxsplit=1)[0]
+    assert result.generation.model
+    assert result.generation.request_id
     assert result.generation.latency_ms >= 0
