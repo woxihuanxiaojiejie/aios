@@ -13,6 +13,11 @@ dependencies = [
     "uvicorn>=0.30,<1",
 ]
 
+[project.optional-dependencies]
+market-data = [
+    "akshare>=1.15,<2",
+]
+
 [dependency-groups]
 dev = [
     "httpx>=0.27,<1",

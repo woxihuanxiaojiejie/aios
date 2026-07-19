@@ -9,6 +9,15 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
+from aios.integrations.akshare.errors import (
+    EmptyMarketDataError,
+    InvalidMarketDataError,
+    MarketDataDateRangeError,
+    MissingMarketDataFieldError,
+    UnsupportedAdjustmentError,
+    UnsupportedMarketSymbolError,
+    UpstreamMarketDataError,
+)
 from aios.kernel.errors import (
     DatabaseConfigurationError,
     DuplicateEntityError,
@@ -145,6 +154,66 @@ def storage_handler(_request: Request, _exc: StorageOperationError) -> JSONRespo
     )
 
 
+def unsupported_market_symbol_handler(
+    _request: Request,
+    exc: UnsupportedMarketSymbolError,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=400,
+        content=error_body("market_data_unsupported_symbol", str(exc)),
+    )
+
+
+def unsupported_adjustment_handler(
+    _request: Request,
+    exc: UnsupportedAdjustmentError,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=400,
+        content=error_body("market_data_unsupported_adjustment", str(exc)),
+    )
+
+
+def market_data_date_range_handler(
+    _request: Request,
+    exc: MarketDataDateRangeError,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=400,
+        content=error_body("market_data_date_range_error", str(exc)),
+    )
+
+
+def market_data_bad_request_handler(
+    _request: Request,
+    exc: InvalidMarketDataError | MissingMarketDataFieldError | ValueError,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=400,
+        content=error_body("market_data_invalid", str(exc)),
+    )
+
+
+def empty_market_data_handler(
+    _request: Request,
+    exc: EmptyMarketDataError,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=404,
+        content=error_body("market_data_empty", str(exc)),
+    )
+
+
+def upstream_market_data_handler(
+    _request: Request,
+    _exc: UpstreamMarketDataError,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=502,
+        content=error_body("market_data_upstream_error", "Upstream market data failed"),
+    )
+
+
 def add_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(
         RequestValidationError,
@@ -168,3 +237,32 @@ def add_exception_handlers(app: FastAPI) -> None:
         cast("Any", database_config_handler),
     )
     app.add_exception_handler(StorageOperationError, cast("Any", storage_handler))
+    app.add_exception_handler(
+        UnsupportedMarketSymbolError,
+        cast("Any", unsupported_market_symbol_handler),
+    )
+    app.add_exception_handler(
+        UnsupportedAdjustmentError,
+        cast("Any", unsupported_adjustment_handler),
+    )
+    app.add_exception_handler(
+        MarketDataDateRangeError,
+        cast("Any", market_data_date_range_handler),
+    )
+    for exception_type in (
+        InvalidMarketDataError,
+        MissingMarketDataFieldError,
+        ValueError,
+    ):
+        app.add_exception_handler(
+            exception_type,
+            cast("Any", market_data_bad_request_handler),
+        )
+    app.add_exception_handler(
+        EmptyMarketDataError,
+        cast("Any", empty_market_data_handler),
+    )
+    app.add_exception_handler(
+        UpstreamMarketDataError,
+        cast("Any", upstream_market_data_handler),
+    )

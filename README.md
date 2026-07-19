@@ -11,7 +11,8 @@ This repository is intentionally narrow. It does not include schedulers, trading
 adapters, agent frameworks, RAG frameworks, backtesting engines, broker
 integrations, or UI code. PostgreSQL support is implemented only as a storage
 adapter behind the kernel storage protocol, and the HTTP API is a thin lifecycle
-boundary over the existing service.
+boundary over the existing service. AKShare support is limited to one market
+data adapter that imports A-share daily bars as `Evidence`.
 
 The HTTP API is currently intended only for local development and trusted
 networks. Do not expose it directly to the public internet.
@@ -27,6 +28,12 @@ networks. Do not expose it directly to the public internet.
 
 ```bash
 uv sync
+```
+
+Install the optional AKShare dependency only when using market-data ingestion:
+
+```bash
+uv sync --extra market-data
 ```
 
 For PostgreSQL storage, configure:
@@ -53,7 +60,9 @@ uv run pytest tests/integration -q
 
 The test suite includes unit coverage for entity validation, storage behavior,
 mapper round trips, database exception mapping, PostgreSQL constraints, Alembic
-migrations, and full lifecycle persistence. Coverage must stay at or above 90%.
+migrations, market-data mapping, and full lifecycle persistence. Default tests
+use fakes for AKShare and do not access the public network. Coverage must stay
+at or above 90%.
 
 ## Migrations
 
@@ -119,10 +128,39 @@ GET  /api/v1/learnings
 GET  /api/v1/learnings/{learning_id}
 POST /api/v1/learnings/{learning_id}/approve
 POST /api/v1/learnings/{learning_id}/reject
+POST /api/v1/market-data/akshare/daily-bars/preview
+POST /api/v1/market-data/akshare/daily-bars/import
 ```
 
 List endpoints support `limit` and `offset`. `limit` defaults to 50 and is capped
 at 200.
+
+### AKShare Market Data
+
+The AKShare adapter wraps only `akshare.stock_zh_a_hist` for A-share daily bars.
+API symbols must use the `000001.SZ` or `600000.SH` form. Supported adjustments
+are `none`, `qfq`, and `hfq`.
+
+Preview standardized bars without writing storage:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/market-data/akshare/daily-bars/preview \
+  -H 'content-type: application/json' \
+  -d '{"symbol":"000001.SZ","start_date":"2026-07-01","end_date":"2026-07-18","adjustment":"qfq"}'
+```
+
+Import bars as `Evidence` through the existing lifecycle service:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/market-data/akshare/daily-bars/import \
+  -H 'content-type: application/json' \
+  -d '{"symbol":"000001.SZ","start_date":"2026-07-01","end_date":"2026-07-18","adjustment":"qfq"}'
+```
+
+AKShare is used here for research data ingestion. Its upstream interface can
+change, and historical responses are not strict point-in-time datasets. Imported
+metadata records `historical_point_in_time_guarantee: false`; this feature should
+not be used directly for live trading decisions.
 
 ## Minimal Usage
 
@@ -232,6 +270,8 @@ storage = PostgresStorage(
 ```text
 src/aios/kernel/      Pydantic entities, enums, and domain errors
 src/aios/adapters/    Protocol definitions
+src/aios/application/ Market Evidence import service
+src/aios/integrations/akshare/ AKShare client, adapter, and mapper
 src/aios/storage/     In-memory and PostgreSQL storage adapters
 src/aios/workflows/   Decision lifecycle orchestration
 alembic/              PostgreSQL schema migration
