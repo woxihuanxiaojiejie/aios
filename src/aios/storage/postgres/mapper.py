@@ -11,16 +11,24 @@ from aios.kernel.enums import (
     Action,
     ApprovalStatus,
     DecisionStatus,
+    DirectionalResult,
+    EvaluationFinalResult,
     ExperimentStatus,
     LearningType,
     Outcome,
+    OutcomeStatus,
+    ReturnResult,
+    RiskResult,
 )
 from aios.kernel.errors import UnsupportedEntityError
 from aios.kernel.evidence import Evidence
 from aios.kernel.experiment import Experiment
 from aios.kernel.learning import Learning
 from aios.kernel.review import Review
+from aios.kernel.settlement import DecisionEvaluation, DecisionOutcome
 from aios.storage.postgres.models import (
+    DecisionEvaluationRecord,
+    DecisionOutcomeRecord,
     DecisionRecord,
     EvidenceRecord,
     ExperimentRecord,
@@ -29,7 +37,13 @@ from aios.storage.postgres.models import (
 )
 
 type Record = (
-    EvidenceRecord | ExperimentRecord | DecisionRecord | ReviewRecord | LearningRecord
+    EvidenceRecord
+    | ExperimentRecord
+    | DecisionRecord
+    | ReviewRecord
+    | LearningRecord
+    | DecisionOutcomeRecord
+    | DecisionEvaluationRecord
 )
 
 
@@ -78,6 +92,42 @@ def to_model(entity: KernelModel) -> Record:
             status=entity.status.value,
             created_at=entity.created_at,
             valid_until=entity.valid_until,
+        )
+    if isinstance(entity, DecisionOutcome):
+        return DecisionOutcomeRecord(
+            outcome_id=entity.outcome_id,
+            decision_id=entity.decision_id,
+            experiment_id=entity.experiment_id,
+            symbol=entity.symbol,
+            horizon=entity.horizon,
+            horizon_semantics=entity.horizon_semantics,
+            observation_started_at=entity.observation_started_at,
+            observation_ended_at=entity.observation_ended_at,
+            entry_price=entity.entry_price,
+            exit_price=entity.exit_price,
+            realized_return=entity.realized_return,
+            maximum_adverse_excursion=entity.maximum_adverse_excursion,
+            maximum_favorable_excursion=entity.maximum_favorable_excursion,
+            market_data_source=entity.market_data_source,
+            market_data_snapshot=entity.market_data_snapshot,
+            settled_at=entity.settled_at,
+            status=entity.status.value,
+            created_at=entity.created_at,
+        )
+    if isinstance(entity, DecisionEvaluation):
+        return DecisionEvaluationRecord(
+            evaluation_id=entity.evaluation_id,
+            decision_id=entity.decision_id,
+            outcome_id=entity.outcome_id,
+            experiment_id=entity.experiment_id,
+            directional_result=entity.directional_result.value,
+            return_result=entity.return_result.value,
+            risk_result=entity.risk_result.value,
+            final_result=entity.final_result.value,
+            evaluation_rules_version=entity.evaluation_rules_version,
+            evaluated_at=entity.evaluated_at,
+            explanation=entity.explanation,
+            created_at=entity.created_at,
         )
     if isinstance(entity, Review):
         return ReviewRecord(
@@ -153,6 +203,42 @@ def model_to_entity(model: DeclarativeBase) -> KernelModel:
             created_at=_utc(model.created_at),
             valid_until=_utc(model.valid_until),
         )
+    if isinstance(model, DecisionOutcomeRecord):
+        return DecisionOutcome(
+            outcome_id=model.outcome_id,
+            decision_id=model.decision_id,
+            experiment_id=model.experiment_id,
+            symbol=model.symbol,
+            horizon=model.horizon,
+            horizon_semantics=model.horizon_semantics,
+            observation_started_at=_utc(model.observation_started_at),
+            observation_ended_at=_utc(model.observation_ended_at),
+            entry_price=model.entry_price,
+            exit_price=model.exit_price,
+            realized_return=model.realized_return,
+            maximum_adverse_excursion=model.maximum_adverse_excursion,
+            maximum_favorable_excursion=model.maximum_favorable_excursion,
+            market_data_source=model.market_data_source,
+            market_data_snapshot=model.market_data_snapshot,
+            settled_at=_utc(model.settled_at),
+            status=OutcomeStatus(model.status),
+            created_at=_utc(model.created_at),
+        )
+    if isinstance(model, DecisionEvaluationRecord):
+        return DecisionEvaluation(
+            evaluation_id=model.evaluation_id,
+            decision_id=model.decision_id,
+            outcome_id=model.outcome_id,
+            experiment_id=model.experiment_id,
+            directional_result=DirectionalResult(model.directional_result),
+            return_result=ReturnResult(model.return_result),
+            risk_result=RiskResult(model.risk_result),
+            final_result=EvaluationFinalResult(model.final_result),
+            evaluation_rules_version=model.evaluation_rules_version,
+            evaluated_at=_utc(model.evaluated_at),
+            explanation=model.explanation,
+            created_at=_utc(model.created_at),
+        )
     if isinstance(model, ReviewRecord):
         return Review(
             review_id=model.review_id,
@@ -188,6 +274,10 @@ def model_for_entity_type(entity_type: type[KernelModel]) -> type[Record]:
         return ExperimentRecord
     if entity_type is Decision:
         return DecisionRecord
+    if entity_type is DecisionOutcome:
+        return DecisionOutcomeRecord
+    if entity_type is DecisionEvaluation:
+        return DecisionEvaluationRecord
     if entity_type is Review:
         return ReviewRecord
     if entity_type is Learning:
@@ -203,6 +293,10 @@ def id_column_for_model(model_type: type[Record]) -> Any:
         return ExperimentRecord.experiment_id
     if model_type is DecisionRecord:
         return DecisionRecord.decision_id
+    if model_type is DecisionOutcomeRecord:
+        return DecisionOutcomeRecord.outcome_id
+    if model_type is DecisionEvaluationRecord:
+        return DecisionEvaluationRecord.evaluation_id
     if model_type is ReviewRecord:
         return ReviewRecord.review_id
     if model_type is LearningRecord:

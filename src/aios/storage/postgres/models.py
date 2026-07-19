@@ -1,9 +1,19 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, Index, String
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Numeric,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -138,6 +148,98 @@ class LLMGenerationRecordModel(Base):
     completion_tokens: Mapped[int | None] = mapped_column(nullable=True)
     total_tokens: Mapped[int | None] = mapped_column(nullable=True)
     latency_ms: Mapped[int] = mapped_column(nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class DecisionOutcomeRecord(Base):
+    __tablename__ = "decision_outcomes"
+    __table_args__ = (
+        UniqueConstraint("decision_id", name="uq_decision_outcomes_decision_id"),
+        Index("ix_decision_outcomes_experiment_id", "experiment_id"),
+        Index("ix_decision_outcomes_status", "status"),
+    )
+
+    outcome_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    decision_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("decisions.decision_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    experiment_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("experiments.experiment_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    symbol: Mapped[str] = mapped_column(String(64), nullable=False)
+    horizon: Mapped[str] = mapped_column(String(64), nullable=False)
+    horizon_semantics: Mapped[str] = mapped_column(String(64), nullable=False)
+    observation_started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    observation_ended_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    entry_price: Mapped[Decimal | None] = mapped_column(Numeric(24, 12), nullable=True)
+    exit_price: Mapped[Decimal | None] = mapped_column(Numeric(24, 12), nullable=True)
+    realized_return: Mapped[Decimal | None] = mapped_column(
+        Numeric(24, 12), nullable=True
+    )
+    maximum_adverse_excursion: Mapped[Decimal | None] = mapped_column(
+        Numeric(24, 12), nullable=True
+    )
+    maximum_favorable_excursion: Mapped[Decimal | None] = mapped_column(
+        Numeric(24, 12), nullable=True
+    )
+    market_data_source: Mapped[str] = mapped_column(String(255), nullable=False)
+    market_data_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    settled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class DecisionEvaluationRecord(Base):
+    __tablename__ = "decision_evaluations"
+    __table_args__ = (
+        UniqueConstraint(
+            "decision_id",
+            "evaluation_rules_version",
+            name="uq_decision_evaluations_decision_rules",
+        ),
+        Index("ix_decision_evaluations_outcome_id", "outcome_id"),
+        Index("ix_decision_evaluations_final_result", "final_result"),
+    )
+
+    evaluation_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    decision_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("decisions.decision_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    outcome_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("decision_outcomes.outcome_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    experiment_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("experiments.experiment_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    directional_result: Mapped[str] = mapped_column(String(64), nullable=False)
+    return_result: Mapped[str] = mapped_column(String(64), nullable=False)
+    risk_result: Mapped[str] = mapped_column(String(64), nullable=False)
+    final_result: Mapped[str] = mapped_column(String(64), nullable=False)
+    evaluation_rules_version: Mapped[str] = mapped_column(String(128), nullable=False)
+    evaluated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    explanation: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )

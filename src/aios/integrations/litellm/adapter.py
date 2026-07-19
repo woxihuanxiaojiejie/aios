@@ -122,7 +122,7 @@ class LiteLLMAdapter:
         return (self._json_schema_response_format(response_schema),)
 
     def _completion(self, **kwargs: Any) -> Any:
-        from litellm import completion  # type: ignore[import-not-found]
+        from litellm import completion
 
         return completion(**kwargs)
 
@@ -132,18 +132,20 @@ class LiteLLMAdapter:
         except ImportError:
             return LLMConfigurationError("LiteLLM is not installed")
 
-        if isinstance(exc, litellm.AuthenticationError):
+        if isinstance(exc, _litellm_error(litellm, "AuthenticationError")):
             return LLMAuthenticationError("LLM authentication failed")
-        if isinstance(exc, litellm.RateLimitError):
+        if isinstance(exc, _litellm_error(litellm, "RateLimitError")):
             return LLMRateLimitError("LLM rate limit exceeded")
-        if isinstance(exc, litellm.Timeout):
+        if isinstance(exc, _litellm_error(litellm, "Timeout")):
             return LLMTimeoutError("LLM request timed out")
-        if isinstance(exc, litellm.BadRequestError):
+        if isinstance(exc, _litellm_error(litellm, "BadRequestError")):
             return LLMConfigurationError("LLM request configuration is invalid")
-        if isinstance(exc, litellm.APIConnectionError):
+        if isinstance(exc, _litellm_error(litellm, "APIConnectionError")):
             return LLMUpstreamError("LLM upstream connection failed")
-        if isinstance(exc, litellm.APIError):
+        if isinstance(exc, _litellm_error(litellm, "APIError")):
             return LLMUpstreamError("LLM upstream request failed")
+        if isinstance(exc, RuntimeError):
+            return LLMConfigurationError("LLM request configuration is invalid")
         return LLMUpstreamError("LLM upstream request failed")
 
     def _parse_response(
@@ -183,6 +185,13 @@ def _messages(
 
 def _response_format_kwargs(response_format: dict[str, Any] | None) -> dict[str, Any]:
     return {} if response_format is None else {"response_format": response_format}
+
+
+def _litellm_error(module: Any, name: str) -> type[Exception] | tuple[()]:
+    value = getattr(module, name, None)
+    if isinstance(value, type) and issubclass(value, Exception):
+        return value
+    return ()
 
 
 def _message_content(response: Any) -> Any:

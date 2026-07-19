@@ -15,8 +15,17 @@ from aios.kernel.evidence import Evidence
 from aios.kernel.experiment import Experiment
 from aios.kernel.learning import Learning
 from aios.kernel.review import Review
+from aios.kernel.settlement import DecisionEvaluation, DecisionOutcome
 
-SUPPORTED_ENTITY_TYPES = (Evidence, Experiment, Decision, Review, Learning)
+SUPPORTED_ENTITY_TYPES = (
+    Evidence,
+    Experiment,
+    Decision,
+    Review,
+    Learning,
+    DecisionOutcome,
+    DecisionEvaluation,
+)
 
 
 class _CreatedEntity(Protocol):
@@ -72,6 +81,32 @@ class InMemoryStorage:
     ) -> bool:
         self._require_supported(entity_type)
         return entity_id in self._entities[entity_type]
+
+    def get_decision_outcome_by_decision_id(
+        self,
+        decision_id: str,
+    ) -> DecisionOutcome | None:
+        self._require_supported(DecisionOutcome)
+        for entity in self._entities[DecisionOutcome].values():
+            outcome = cast("DecisionOutcome", entity)
+            if outcome.decision_id == decision_id:
+                return outcome
+        return None
+
+    def get_decision_evaluation_by_decision_id(
+        self,
+        decision_id: str,
+        evaluation_rules_version: str,
+    ) -> DecisionEvaluation | None:
+        self._require_supported(DecisionEvaluation)
+        for entity in self._entities[DecisionEvaluation].values():
+            evaluation = cast("DecisionEvaluation", entity)
+            if (
+                evaluation.decision_id == decision_id
+                and evaluation.evaluation_rules_version == evaluation_rules_version
+            ):
+                return evaluation
+        return None
 
     def _require_supported(self, entity_type: type[KernelModel]) -> None:
         if entity_type not in SUPPORTED_ENTITY_TYPES:

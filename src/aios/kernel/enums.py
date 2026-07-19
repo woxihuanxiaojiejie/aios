@@ -22,6 +22,38 @@ class DecisionStatus(StrEnum):
     INVALID = "invalid"
 
 
+class OutcomeStatus(StrEnum):
+    SETTLED = "settled"
+    INSUFFICIENT_DATA = "insufficient_data"
+    INVALIDATED = "invalidated"
+
+
+class DirectionalResult(StrEnum):
+    CORRECT = "correct"
+    INCORRECT = "incorrect"
+    NEUTRAL = "neutral"
+    NOT_APPLICABLE = "not_applicable"
+
+
+class ReturnResult(StrEnum):
+    MET = "met"
+    MISSED = "missed"
+    NOT_APPLICABLE = "not_applicable"
+
+
+class RiskResult(StrEnum):
+    WITHIN_LIMIT = "within_limit"
+    BREACHED = "breached"
+    NOT_APPLICABLE = "not_applicable"
+
+
+class EvaluationFinalResult(StrEnum):
+    PASS = "pass"
+    FAIL = "fail"
+    INVALID = "invalid"
+    INCONCLUSIVE = "inconclusive"
+
+
 class Outcome(StrEnum):
     PROFIT = "profit"
     LOSS = "loss"

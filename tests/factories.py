@@ -4,11 +4,19 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from aios.kernel.decision import Decision
-from aios.kernel.enums import Action
+from aios.kernel.enums import (
+    Action,
+    DirectionalResult,
+    EvaluationFinalResult,
+    OutcomeStatus,
+    ReturnResult,
+    RiskResult,
+)
 from aios.kernel.evidence import Evidence
 from aios.kernel.experiment import Experiment
 from aios.kernel.learning import Learning
 from aios.kernel.review import Review
+from aios.kernel.settlement import DecisionEvaluation, DecisionOutcome
 
 
 def fixed_now() -> datetime:
@@ -121,4 +129,59 @@ def make_learning(
         after={"weight": 0.45, "tags": ["guidance"]},
         reason="profitable reviewed decision",
         created_at=created_at or fixed_now() + timedelta(days=5, minutes=1),
+    )
+
+
+def make_outcome(
+    decision_id: str,
+    experiment_id: str,
+    *,
+    outcome_id: str = "oc_00000000-0000-0000-0000-000000000001",
+    created_at: datetime | None = None,
+) -> DecisionOutcome:
+    moment = created_at or fixed_now() + timedelta(days=1)
+    return DecisionOutcome(
+        outcome_id=outcome_id,
+        decision_id=decision_id,
+        experiment_id=experiment_id,
+        symbol="NVDA",
+        horizon="1d",
+        horizon_semantics="natural_time",
+        observation_started_at=fixed_now(),
+        observation_ended_at=fixed_now() + timedelta(days=1),
+        entry_price="10.00",
+        exit_price="10.30",
+        realized_return="0.03",
+        maximum_adverse_excursion="-0.01",
+        maximum_favorable_excursion="0.04",
+        market_data_source="deterministic-test",
+        market_data_snapshot={"entry_trade_date": "2026-07-20"},
+        settled_at=moment,
+        status=OutcomeStatus.SETTLED,
+        created_at=moment,
+    )
+
+
+def make_evaluation(
+    decision_id: str,
+    outcome_id: str,
+    experiment_id: str,
+    *,
+    evaluation_id: str = "de_00000000-0000-0000-0000-000000000001",
+    created_at: datetime | None = None,
+) -> DecisionEvaluation:
+    moment = created_at or fixed_now() + timedelta(days=1, minutes=1)
+    return DecisionEvaluation(
+        evaluation_id=evaluation_id,
+        decision_id=decision_id,
+        outcome_id=outcome_id,
+        experiment_id=experiment_id,
+        directional_result=DirectionalResult.CORRECT,
+        return_result=ReturnResult.MET,
+        risk_result=RiskResult.WITHIN_LIMIT,
+        final_result=EvaluationFinalResult.PASS,
+        evaluation_rules_version="decision-evaluation-v1",
+        evaluated_at=moment,
+        explanation="deterministic evaluation",
+        created_at=moment,
     )

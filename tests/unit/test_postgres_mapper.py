@@ -3,9 +3,11 @@ from datetime import UTC
 import pytest
 from tests.factories import (
     make_decision,
+    make_evaluation,
     make_evidence,
     make_experiment,
     make_learning,
+    make_outcome,
     make_review,
 )
 
@@ -16,6 +18,7 @@ from aios.kernel.evidence import Evidence
 from aios.kernel.experiment import Experiment
 from aios.kernel.learning import Learning
 from aios.kernel.review import Review
+from aios.kernel.settlement import DecisionEvaluation, DecisionOutcome
 from aios.storage.postgres.mapper import model_to_entity, to_model
 
 
@@ -47,6 +50,27 @@ class UnsupportedEntity(KernelModel):
                     make_evidence().evidence_id,
                 ).decision_id
             ).review_id
+        ),
+        make_outcome(
+            make_decision(
+                make_experiment(make_evidence().evidence_id).experiment_id,
+                make_evidence().evidence_id,
+            ).decision_id,
+            make_experiment(make_evidence().evidence_id).experiment_id,
+        ),
+        make_evaluation(
+            make_decision(
+                make_experiment(make_evidence().evidence_id).experiment_id,
+                make_evidence().evidence_id,
+            ).decision_id,
+            make_outcome(
+                make_decision(
+                    make_experiment(make_evidence().evidence_id).experiment_id,
+                    make_evidence().evidence_id,
+                ).decision_id,
+                make_experiment(make_evidence().evidence_id).experiment_id,
+            ).outcome_id,
+            make_experiment(make_evidence().evidence_id).experiment_id,
         ),
     ],
 )
@@ -87,6 +111,20 @@ def test_jsonb_and_utc_fields_round_trip() -> None:
     assert isinstance(restored_learning, Learning)
     assert restored_learning.before == {"weight": 0.4, "tags": ["guidance"]}
     assert restored_learning.after == {"weight": 0.45, "tags": ["guidance"]}
+
+    outcome = make_outcome(decision.decision_id, experiment.experiment_id)
+    restored_outcome = model_to_entity(to_model(outcome))
+    assert isinstance(restored_outcome, DecisionOutcome)
+    assert restored_outcome.market_data_snapshot == {"entry_trade_date": "2026-07-20"}
+
+    evaluation = make_evaluation(
+        decision.decision_id,
+        outcome.outcome_id,
+        experiment.experiment_id,
+    )
+    restored_evaluation = model_to_entity(to_model(evaluation))
+    assert isinstance(restored_evaluation, DecisionEvaluation)
+    assert restored_evaluation.explanation == "deterministic evaluation"
 
 
 def test_unsupported_entity_mapping_fails() -> None:

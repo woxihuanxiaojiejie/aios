@@ -9,9 +9,11 @@ from sqlalchemy.exc import IntegrityError
 from tests.factories import (
     fixed_now,
     make_decision,
+    make_evaluation,
     make_evidence,
     make_experiment,
     make_learning,
+    make_outcome,
     make_review,
 )
 from tests.integration.conftest import alembic_config, table_count
@@ -26,6 +28,7 @@ from aios.kernel.evidence import Evidence
 from aios.kernel.experiment import Experiment
 from aios.kernel.learning import Learning
 from aios.kernel.review import Review
+from aios.kernel.settlement import DecisionEvaluation, DecisionOutcome
 from aios.storage.postgres.storage import PostgresStorage
 
 
@@ -102,6 +105,40 @@ def test_jsonb_fields_round_trip(migrated_postgres_url: str) -> None:
     }
 
 
+def test_decision_settlement_query_methods(migrated_postgres_url: str) -> None:
+    storage = PostgresStorage(migrated_postgres_url)
+    evidence, experiment, decision, _review, _learning = seed_lifecycle(storage)
+    outcome = make_outcome(decision.decision_id, experiment.experiment_id)
+    evaluation = make_evaluation(
+        decision.decision_id,
+        outcome.outcome_id,
+        experiment.experiment_id,
+    )
+
+    storage.save(outcome)
+    storage.save(evaluation)
+
+    assert storage.get(DecisionOutcome, outcome.outcome_id) == outcome
+    assert storage.get(DecisionEvaluation, evaluation.evaluation_id) == evaluation
+    assert storage.get_decision_outcome_by_decision_id(decision.decision_id) == outcome
+    assert (
+        storage.get_decision_evaluation_by_decision_id(
+            decision.decision_id,
+            evaluation.evaluation_rules_version,
+        )
+        == evaluation
+    )
+    assert storage.get_decision_outcome_by_decision_id("dc_missing") is None
+    assert (
+        storage.get_decision_evaluation_by_decision_id(
+            decision.decision_id,
+            "missing-rules",
+        )
+        is None
+    )
+    assert storage.get(Evidence, evidence.evidence_id) == evidence
+
+
 def test_write_failure_rolls_back(migrated_postgres_url: str) -> None:
     storage = PostgresStorage(migrated_postgres_url)
     invalid = make_decision("ex_missing", "ev_missing")
@@ -166,6 +203,8 @@ def test_migration_upgrade_downgrade_upgrade(postgres_url: str) -> None:
             "reviews",
             "learnings",
             "llm_generation_records",
+            "decision_outcomes",
+            "decision_evaluations",
         } <= set(inspector.get_table_names())
     finally:
         engine.dispose()
@@ -182,6 +221,6 @@ def test_migration_upgrade_downgrade_upgrade(postgres_url: str) -> None:
     engine = create_engine(postgres_url)
     try:
         inspector = inspect(engine)
-        assert "llm_generation_records" in inspector.get_table_names()
+        assert "decision_evaluations" in inspector.get_table_names()
     finally:
         engine.dispose()

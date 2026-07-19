@@ -65,4 +65,5 @@ testpaths = ["tests"]
 pythonpath = [".", "src"]
 markers = [
     "external_llm: requires real BaoStock and LLM provider network access",
+    "external_market: requires real BaoStock market data network access",
 ]

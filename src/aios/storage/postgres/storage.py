@@ -13,6 +13,7 @@ from aios.kernel.errors import (
     MissingEntityError,
     StorageOperationError,
 )
+from aios.kernel.settlement import DecisionEvaluation, DecisionOutcome
 from aios.storage.postgres.database import make_engine, make_session_factory
 from aios.storage.postgres.mapper import (
     id_column_for_model,
@@ -20,6 +21,7 @@ from aios.storage.postgres.mapper import (
     model_to_entity,
     to_model,
 )
+from aios.storage.postgres.models import DecisionEvaluationRecord, DecisionOutcomeRecord
 
 
 class PostgresStorage:
@@ -138,6 +140,47 @@ class PostgresStorage:
             return session.get(model_type, entity_id) is not None
         except SQLAlchemyError as exc:
             msg = f"failed to check {entity_type.__name__} with id {entity_id}"
+            raise StorageOperationError(msg) from exc
+        finally:
+            session.close()
+
+    def get_decision_outcome_by_decision_id(
+        self,
+        decision_id: str,
+    ) -> DecisionOutcome | None:
+        session = self._session_factory()
+        try:
+            statement = select(DecisionOutcomeRecord).where(
+                DecisionOutcomeRecord.decision_id == decision_id
+            )
+            model = session.scalars(statement).one_or_none()
+            if model is None:
+                return None
+            return cast("DecisionOutcome", model_to_entity(model))
+        except SQLAlchemyError as exc:
+            msg = f"failed to get DecisionOutcome for decision {decision_id}"
+            raise StorageOperationError(msg) from exc
+        finally:
+            session.close()
+
+    def get_decision_evaluation_by_decision_id(
+        self,
+        decision_id: str,
+        evaluation_rules_version: str,
+    ) -> DecisionEvaluation | None:
+        session = self._session_factory()
+        try:
+            statement = select(DecisionEvaluationRecord).where(
+                DecisionEvaluationRecord.decision_id == decision_id,
+                DecisionEvaluationRecord.evaluation_rules_version
+                == evaluation_rules_version,
+            )
+            model = session.scalars(statement).one_or_none()
+            if model is None:
+                return None
+            return cast("DecisionEvaluation", model_to_entity(model))
+        except SQLAlchemyError as exc:
+            msg = f"failed to get DecisionEvaluation for decision {decision_id}"
             raise StorageOperationError(msg) from exc
         finally:
             session.close()

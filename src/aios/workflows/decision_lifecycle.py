@@ -15,6 +15,7 @@ from aios.kernel.evidence import Evidence
 from aios.kernel.experiment import Experiment
 from aios.kernel.learning import Learning
 from aios.kernel.review import Review
+from aios.kernel.settlement import DecisionEvaluation, DecisionOutcome
 
 
 class DecisionLifecycleService:
@@ -84,6 +85,57 @@ class DecisionLifecycleService:
             raise DuplicateEntityError(msg)
         self._storage.save(review)
         return review
+
+    def settle_decision(self, outcome: DecisionOutcome) -> DecisionOutcome:
+        existing = self._storage.get_decision_outcome_by_decision_id(
+            outcome.decision_id
+        )
+        if existing is not None:
+            return existing
+        self._require_exists(Decision, outcome.decision_id)
+        self._require_exists(Experiment, outcome.experiment_id)
+        decision = self._storage.get(Decision, outcome.decision_id)
+        if decision.experiment_id != outcome.experiment_id:
+            msg = "DecisionOutcome experiment_id must match Decision experiment_id"
+            raise ReferenceIntegrityError(msg)
+        self._storage.save(outcome)
+        return outcome
+
+    def evaluate_decision(
+        self,
+        evaluation: DecisionEvaluation,
+    ) -> DecisionEvaluation:
+        existing = self._storage.get_decision_evaluation_by_decision_id(
+            evaluation.decision_id,
+            evaluation.evaluation_rules_version,
+        )
+        if existing is not None:
+            return existing
+        self._require_exists(Decision, evaluation.decision_id)
+        self._require_exists(Experiment, evaluation.experiment_id)
+        self._require_exists(DecisionOutcome, evaluation.outcome_id)
+        outcome = self._storage.get(DecisionOutcome, evaluation.outcome_id)
+        if outcome.decision_id != evaluation.decision_id:
+            msg = "DecisionEvaluation decision_id must match DecisionOutcome"
+            raise ReferenceIntegrityError(msg)
+        if outcome.experiment_id != evaluation.experiment_id:
+            msg = "DecisionEvaluation experiment_id must match DecisionOutcome"
+            raise ReferenceIntegrityError(msg)
+        self._storage.save(evaluation)
+        return evaluation
+
+    def get_decision_outcome(self, decision_id: str) -> DecisionOutcome | None:
+        return self._storage.get_decision_outcome_by_decision_id(decision_id)
+
+    def get_decision_evaluation(
+        self,
+        decision_id: str,
+        evaluation_rules_version: str,
+    ) -> DecisionEvaluation | None:
+        return self._storage.get_decision_evaluation_by_decision_id(
+            decision_id,
+            evaluation_rules_version,
+        )
 
     def propose_learning(self, learning: Learning) -> Learning:
         self._require_exists(Review, learning.review_id)
