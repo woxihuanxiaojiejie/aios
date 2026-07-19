@@ -33,6 +33,7 @@ from aios.integrations.litellm.errors import (
 from aios.kernel.errors import (
     DatabaseConfigurationError,
     DuplicateEntityError,
+    EvaluationConfigurationError,
     InvalidStateTransitionError,
     MissingEntityError,
     ReferenceIntegrityError,
@@ -99,6 +100,16 @@ def domain_validation_handler(
     return JSONResponse(
         status_code=400,
         content=error_body("validation_failed", str(exc), exc.details),
+    )
+
+
+def evaluation_config_handler(
+    _request: Request,
+    exc: EvaluationConfigurationError,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=400,
+        content=error_body("evaluation_configuration_error", str(exc)),
     )
 
 
@@ -272,6 +283,10 @@ def add_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(
         DomainValidationError,
         cast("Any", domain_validation_handler),
+    )
+    app.add_exception_handler(
+        EvaluationConfigurationError,
+        cast("Any", evaluation_config_handler),
     )
     app.add_exception_handler(MissingEntityError, cast("Any", missing_entity_handler))
     app.add_exception_handler(ReferenceIntegrityError, cast("Any", reference_handler))

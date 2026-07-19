@@ -9,11 +9,11 @@ Evidence -> Experiment -> Decision -> Review -> Learning
 
 This repository is intentionally narrow. It does not include schedulers, trading
 adapters, agent frameworks, RAG frameworks, backtesting engines, broker
-integrations, or UI code. PostgreSQL support is implemented only as a storage
-adapter behind the kernel storage protocol, and the HTTP API is a thin lifecycle
-boundary over the existing service. AKShare and BaoStock support are independent
-market-data providers that use the same `MarketDataAdapter` protocol to import
-A-share daily bars as `Evidence`.
+integrations, or Learning automation. PostgreSQL support is implemented only as
+a storage adapter behind the kernel storage protocol, and the HTTP API is a thin
+lifecycle boundary over the existing service. AKShare and BaoStock support are
+independent market-data providers that use the same `MarketDataAdapter` protocol
+to import A-share daily bars as `Evidence`.
 
 The HTTP API is currently intended only for local development and trusted
 networks. Do not expose it directly to the public internet.
@@ -136,6 +136,12 @@ POST /api/v1/market-data/akshare/daily-bars/import
 POST /api/v1/market-data/baostock/daily-bars/preview
 POST /api/v1/market-data/baostock/daily-bars/import
 POST /api/v1/decision-generation/generate
+GET  /api/v1/research/market
+POST /api/v1/research/evidence
+POST /api/v1/research/experiments
+POST /api/v1/research/decisions
+POST /api/v1/research/settlements/{decision_id}
+GET  /api/v1/research/history
 ```
 
 List endpoints support `limit` and `offset`. `limit` defaults to 50 and is capped
@@ -252,6 +258,49 @@ uv run pytest tests/external/test_external_llm_smoke.py -q
 The smoke uses BaoStock Evidence and the configured model. It reports test
 status only; it does not print API keys, full prompts, or hidden reasoning.
 Current Decisions cannot directly trigger trades.
+
+## Research Workbench
+
+The browser workbench is available at `/research`. It calls only the AIOS
+backend; provider API keys stay in backend environment variables and are not
+returned to the browser.
+
+Configure `.env` from `.env.example`:
+
+```bash
+AIOS_DATABASE_URL=postgresql+psycopg://aios:aios@localhost:5432/aios
+AIOS_EXTERNAL_LLM_MODEL=deepseek/deepseek-chat
+DEEPSEEK_API_KEY=your-local-key
+VITE_API_BASE_URL=http://127.0.0.1:8000/api/v1
+```
+
+Local development:
+
+```bash
+uv sync --extra llm --extra market-data-baostock
+uv run alembic upgrade head
+uv run uvicorn aios.api.app:create_default_app --factory --host 127.0.0.1 --port 8000
+npm install
+npm run dev
+```
+
+Open `http://127.0.0.1:5173/research`.
+
+Docker startup:
+
+```bash
+docker compose up --build
+```
+
+Open `http://127.0.0.1:4173/research`. In Compose mode the backend is published
+at `http://127.0.0.1:18000/api/v1` to avoid collisions with local development
+servers on port 8000. Compose starts PostgreSQL, applies Alembic migrations in
+the backend container, and serves the built frontend.
+
+The workbench displays `REAL MARKET DATA` and `REAL LLM` when it is using the
+production path. A-share symbols use the existing BaoStock adapter format such
+as `000001.SZ` or `600000.SH`. Unsupported markets return a backend error
+instead of fixture data.
 
 ## Minimal Usage
 

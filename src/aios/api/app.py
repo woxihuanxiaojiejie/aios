@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import os
+
+from dotenv import load_dotenv
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from aios.adapters.llm import LLMAdapter
 from aios.adapters.market_data import MarketDataAdapter
@@ -14,6 +18,7 @@ from aios.api.routes import (
     health,
     learnings,
     market_data,
+    research,
     reviews,
 )
 from aios.application.decision_generation import GenerationRecorder
@@ -31,7 +36,15 @@ def create_app(
     llm_adapter: LLMAdapter | None = None,
     generation_recorder: GenerationRecorder | None = None,
 ) -> FastAPI:
+    load_dotenv(override=True)
     app = FastAPI(title="AIOS", version="0.1.0")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins(),
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     resolved_storage = storage or PostgresStorage()
     app.state.storage = resolved_storage
     app.state.market_data_adapter = market_data_adapter or AKShareMarketDataAdapter()
@@ -54,6 +67,7 @@ def create_app(
     app.include_router(market_data.router, prefix="/api/v1")
     app.include_router(market_data.baostock_router, prefix="/api/v1")
     app.include_router(decision_generation.router, prefix="/api/v1")
+    app.include_router(research.router, prefix="/api/v1")
     return app
 
 
@@ -65,3 +79,15 @@ def _generation_recorder(storage: Storage) -> GenerationRecorder | None:
     if isinstance(storage, PostgresStorage):
         return LLMGenerationRecordStore(storage.database_url)
     return None
+
+
+def _cors_origins() -> list[str]:
+    configured = os.getenv("AIOS_CORS_ORIGINS")
+    if configured:
+        return [origin.strip() for origin in configured.split(",") if origin.strip()]
+    return [
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+        "http://127.0.0.1:4173",
+        "http://localhost:4173",
+    ]

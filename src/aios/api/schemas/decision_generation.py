@@ -17,10 +17,12 @@ class GenerationMetadataResponse(ApiSchema):
     provider: str
     model: str
     prompt_version: str
+    request_id: str | None
     prompt_tokens: int | None
     completion_tokens: int | None
     total_tokens: int | None
     latency_ms: int
+    raw_finish_reason: str | None
 
 
 class DecisionGenerationResponse(ApiSchema):
@@ -35,8 +37,10 @@ def generation_metadata_response(
         provider=generation.provider,
         model=generation.model,
         prompt_version=generation.prompt_version,
+        request_id=generation.request_id,
         prompt_tokens=generation.prompt_tokens,
         completion_tokens=generation.completion_tokens,
         total_tokens=generation.total_tokens,
         latency_ms=generation.latency_ms,
+        raw_finish_reason=generation.raw_finish_reason,
     )
