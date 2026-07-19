@@ -12,3 +12,15 @@ class MissingEntityError(AiosError):
 
 class ReferenceIntegrityError(AiosError):
     """Raised when a lifecycle object references a missing entity."""
+
+
+class UnsupportedEntityError(AiosError):
+    """Raised when a storage adapter does not support an entity type."""
+
+
+class DatabaseConfigurationError(AiosError):
+    """Raised when database configuration is missing or invalid."""
+
+
+class StorageOperationError(AiosError):
+    """Raised when a storage operation fails without leaking adapter errors."""

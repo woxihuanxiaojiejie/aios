@@ -1,10 +1,27 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import cast
+from datetime import datetime
+from typing import Protocol, cast
 
 from aios.kernel.base import KernelModel
-from aios.kernel.errors import DuplicateEntityError, MissingEntityError
+from aios.kernel.decision import Decision
+from aios.kernel.errors import (
+    DuplicateEntityError,
+    MissingEntityError,
+    UnsupportedEntityError,
+)
+from aios.kernel.evidence import Evidence
+from aios.kernel.experiment import Experiment
+from aios.kernel.learning import Learning
+from aios.kernel.review import Review
+
+SUPPORTED_ENTITY_TYPES = (Evidence, Experiment, Decision, Review, Learning)
+
+
+class _CreatedEntity(Protocol):
+    entity_id: str
+    created_at: datetime
 
 
 class InMemoryStorage:
@@ -14,6 +31,7 @@ class InMemoryStorage:
         )
 
     def save(self, entity: KernelModel) -> None:
+        self._require_supported(type(entity))
         entity_type = type(entity)
         entity_id = entity.entity_id
         if entity_id in self._entities[entity_type]:
@@ -24,6 +42,7 @@ class InMemoryStorage:
     def get[EntityT: KernelModel](
         self, entity_type: type[EntityT], entity_id: str
     ) -> EntityT:
+        self._require_supported(entity_type)
         try:
             entity = self._entities[entity_type][entity_id]
         except KeyError as exc:
@@ -32,11 +51,24 @@ class InMemoryStorage:
         return cast("EntityT", entity)
 
     def list[EntityT: KernelModel](self, entity_type: type[EntityT]) -> list[EntityT]:
-        return [
-            cast("EntityT", entity) for entity in self._entities[entity_type].values()
-        ]
+        self._require_supported(entity_type)
+        sorted_entities = sorted(
+            self._entities[entity_type].values(),
+            key=self._sort_key,
+        )
+        return [cast("EntityT", entity) for entity in sorted_entities]
 
     def exists[EntityT: KernelModel](
         self, entity_type: type[EntityT], entity_id: str
     ) -> bool:
+        self._require_supported(entity_type)
         return entity_id in self._entities[entity_type]
+
+    def _require_supported(self, entity_type: type[KernelModel]) -> None:
+        if entity_type not in SUPPORTED_ENTITY_TYPES:
+            msg = f"{entity_type.__name__} is not supported by InMemoryStorage"
+            raise UnsupportedEntityError(msg)
+
+    def _sort_key(self, entity: KernelModel) -> tuple[datetime, str]:
+        sortable = cast("_CreatedEntity", entity)
+        return sortable.created_at, sortable.entity_id
