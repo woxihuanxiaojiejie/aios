@@ -36,6 +36,7 @@ Install optional market-data dependencies only when using those providers:
 ```bash
 uv sync --extra market-data
 uv sync --extra market-data-baostock
+uv sync --extra llm
 ```
 
 For PostgreSQL storage, configure:
@@ -134,6 +135,7 @@ POST /api/v1/market-data/akshare/daily-bars/preview
 POST /api/v1/market-data/akshare/daily-bars/import
 POST /api/v1/market-data/baostock/daily-bars/preview
 POST /api/v1/market-data/baostock/daily-bars/import
+POST /api/v1/decision-generation/generate
 ```
 
 List endpoints support `limit` and `offset`. `limit` defaults to 50 and is capped
@@ -194,6 +196,62 @@ Imported market-data metadata records
 `historical_point_in_time_guarantee: false`. Data source availability or
 upstream failure is separate from AIOS Kernel correctness, and these interfaces
 must not be used directly for live trading decisions.
+
+### LLM Decision Generation
+
+The LLM boundary uses LiteLLM as an in-process SDK only. AIOS does not deploy a
+LiteLLM proxy, implement provider SDK adapters, or route models. The Kernel does
+not import LiteLLM.
+
+Create an Experiment with:
+
+- `model`: a LiteLLM model name such as `openai/...`, `deepseek/...`, or another
+  provider/model configured by LiteLLM.
+- `prompt_version`: `decision-v1`
+- `evidence_ids`: existing Evidence IDs to provide to the model.
+- `parameters`: only `temperature` is read, and it must be between `0` and `1`.
+
+Provider API keys are read by LiteLLM from the provider's standard environment
+variables. Do not put API keys in Experiment parameters, database rows, or API
+requests.
+
+Generate a Decision:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/decision-generation/generate \
+  -H 'content-type: application/json' \
+  -d '{"experiment_id":"ex_xxx","symbol":"000001.SZ","horizon":"1d"}'
+```
+
+The prompt is built by `decision-v1` code, not by the router. It serializes only
+the Experiment request context and provided Evidence, with stable ordering and
+bounded size. The model must return a structured `DecisionDraft`; AIOS validates
+that draft with Pydantic and then validates the resulting `Decision` through the
+existing lifecycle service. LLM output must pass domain validation, but domain
+validation cannot prove the investment conclusion is correct.
+
+`valid_until` uses natural time, for example `created_at + 1 day` for `1d`. AIOS
+does not use a trading calendar in V0.1. Repeated `POST generate` calls can
+create multiple Decisions because API idempotency is deferred.
+
+For PostgreSQL storage, bounded generation metadata is saved in
+`llm_generation_records`: decision ID, experiment ID, provider, model, prompt
+version, prompt hash, Evidence snapshot hash, temperature, token counts, latency,
+and creation time. AIOS does not save API keys, hidden reasoning, full prompts,
+or full provider responses.
+
+Default tests do not call model providers. Optional real smoke:
+
+```bash
+export AIOS_RUN_EXTERNAL_LLM_TESTS=1
+export AIOS_EXTERNAL_LLM_MODEL='openai/...'
+uv sync --extra llm --extra market-data-baostock
+uv run pytest tests/external/test_external_llm_smoke.py -q
+```
+
+The smoke uses BaoStock Evidence and the configured model. It reports test
+status only; it does not print API keys, full prompts, or hidden reasoning.
+Current Decisions cannot directly trigger trades.
 
 ## Minimal Usage
 

@@ -18,6 +18,18 @@ from aios.adapters.market_errors import (
     UnsupportedMarketSymbolError,
     UpstreamMarketDataError,
 )
+from aios.application.decision_generation import (
+    DecisionEvidenceValidationError,
+    UnsupportedPromptVersionError,
+)
+from aios.integrations.litellm.errors import (
+    LLMAuthenticationError,
+    LLMConfigurationError,
+    LLMRateLimitError,
+    LLMStructuredOutputError,
+    LLMTimeoutError,
+    LLMUpstreamError,
+)
 from aios.kernel.errors import (
     DatabaseConfigurationError,
     DuplicateEntityError,
@@ -214,6 +226,43 @@ def upstream_market_data_handler(
     )
 
 
+def decision_generation_validation_handler(
+    _request: Request,
+    exc: DecisionEvidenceValidationError | UnsupportedPromptVersionError,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=400,
+        content=error_body("decision_generation_validation_error", str(exc)),
+    )
+
+
+def llm_service_unavailable_handler(
+    _request: Request,
+    _exc: LLMConfigurationError | LLMAuthenticationError | LLMRateLimitError,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=503,
+        content=error_body("llm_unavailable", "LLM provider is unavailable"),
+    )
+
+
+def llm_timeout_handler(_request: Request, _exc: LLMTimeoutError) -> JSONResponse:
+    return JSONResponse(
+        status_code=504,
+        content=error_body("llm_timeout", "LLM request timed out"),
+    )
+
+
+def llm_bad_gateway_handler(
+    _request: Request,
+    _exc: LLMUpstreamError | LLMStructuredOutputError,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=502,
+        content=error_body("llm_upstream_error", "LLM generation failed"),
+    )
+
+
 def add_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(
         RequestValidationError,
@@ -249,13 +298,13 @@ def add_exception_handlers(app: FastAPI) -> None:
         MarketDataDateRangeError,
         cast("Any", market_data_date_range_handler),
     )
-    for exception_type in (
+    for market_error_type in (
         InvalidMarketDataError,
         MissingMarketDataFieldError,
         ValueError,
     ):
         app.add_exception_handler(
-            exception_type,
+            market_error_type,
             cast("Any", market_data_bad_request_handler),
         )
     app.add_exception_handler(
@@ -266,3 +315,26 @@ def add_exception_handlers(app: FastAPI) -> None:
         UpstreamMarketDataError,
         cast("Any", upstream_market_data_handler),
     )
+    for decision_generation_error_type in (
+        DecisionEvidenceValidationError,
+        UnsupportedPromptVersionError,
+    ):
+        app.add_exception_handler(
+            decision_generation_error_type,
+            cast("Any", decision_generation_validation_handler),
+        )
+    for llm_unavailable_error_type in (
+        LLMConfigurationError,
+        LLMAuthenticationError,
+        LLMRateLimitError,
+    ):
+        app.add_exception_handler(
+            llm_unavailable_error_type,
+            cast("Any", llm_service_unavailable_handler),
+        )
+    app.add_exception_handler(LLMTimeoutError, cast("Any", llm_timeout_handler))
+    for llm_gateway_error_type in (LLMUpstreamError, LLMStructuredOutputError):
+        app.add_exception_handler(
+            llm_gateway_error_type,
+            cast("Any", llm_bad_gateway_handler),
+        )

@@ -20,6 +20,9 @@ market-data = [
 market-data-baostock = [
     "baostock>=0.8,<1",
 ]
+llm = [
+    "litellm>=1.70,<2",
+]
 
 [dependency-groups]
 dev = [
@@ -58,3 +61,6 @@ mypy_path = "src"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = [".", "src"]
+markers = [
+    "external_llm: requires real BaoStock and LLM provider network access",
+]

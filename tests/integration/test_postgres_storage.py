@@ -159,9 +159,14 @@ def test_migration_upgrade_downgrade_upgrade(postgres_url: str) -> None:
     engine = create_engine(postgres_url)
     try:
         inspector = inspect(engine)
-        assert {"evidence", "experiments", "decisions", "reviews", "learnings"} <= set(
-            inspector.get_table_names()
-        )
+        assert {
+            "evidence",
+            "experiments",
+            "decisions",
+            "reviews",
+            "learnings",
+            "llm_generation_records",
+        } <= set(inspector.get_table_names())
     finally:
         engine.dispose()
 
@@ -177,6 +182,6 @@ def test_migration_upgrade_downgrade_upgrade(postgres_url: str) -> None:
     engine = create_engine(postgres_url)
     try:
         inspector = inspect(engine)
-        assert "learnings" in inspector.get_table_names()
+        assert "llm_generation_records" in inspector.get_table_names()
     finally:
         engine.dispose()

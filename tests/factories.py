@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from aios.kernel.decision import Decision
 from aios.kernel.enums import Action
@@ -17,6 +18,7 @@ def fixed_now() -> datetime:
 def make_evidence(
     *,
     evidence_id: str = "ev_00000000-0000-0000-0000-000000000001",
+    summary: str = "updated guidance",
     created_at: datetime | None = None,
 ) -> Evidence:
     moment = fixed_now()
@@ -27,7 +29,7 @@ def make_evidence(
         symbols=["NVDA", "MSFT"],
         published_at=moment,
         available_at=moment + timedelta(minutes=2),
-        summary="updated guidance",
+        summary=summary,
         reliability=0.85,
         content_hash=f"hash-{evidence_id}",
         metadata={"form": "10-Q", "nested": {"page": 3}},
@@ -39,18 +41,21 @@ def make_experiment(
     evidence_id: str,
     *,
     experiment_id: str = "ex_00000000-0000-0000-0000-000000000001",
+    model: str = "model-v1",
+    prompt_version: str = "prompt-v1",
+    parameters: dict[str, Any] | None = None,
     created_at: datetime | None = None,
 ) -> Experiment:
     moment = fixed_now()
     return Experiment(
         experiment_id=experiment_id,
         name="guidance-check",
-        model="model-v1",
-        prompt_version="prompt-v1",
+        model=model,
+        prompt_version=prompt_version,
         agent_config_version="agent-v1",
         dataset_snapshot="snapshot-v1",
         evidence_ids=[evidence_id],
-        parameters={"temperature": 0, "weights": [1, 2]},
+        parameters=parameters or {"temperature": 0, "weights": [1, 2]},
         started_at=moment + timedelta(minutes=3),
         finished_at=moment + timedelta(minutes=4),
         created_at=created_at or moment,

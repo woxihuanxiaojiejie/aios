@@ -111,6 +111,38 @@ class DecisionRecord(Base):
     )
 
 
+class LLMGenerationRecordModel(Base):
+    __tablename__ = "llm_generation_records"
+    __table_args__ = (
+        Index("ix_llm_generation_records_experiment_id", "experiment_id"),
+        Index("ix_llm_generation_records_created_at", "created_at"),
+    )
+
+    decision_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("decisions.decision_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    experiment_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("experiments.experiment_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    provider: Mapped[str] = mapped_column(String(64), nullable=False)
+    model: Mapped[str] = mapped_column(String(255), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    prompt_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    evidence_snapshot_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    temperature: Mapped[float] = mapped_column(Float, nullable=False)
+    prompt_tokens: Mapped[int | None] = mapped_column(nullable=True)
+    completion_tokens: Mapped[int | None] = mapped_column(nullable=True)
+    total_tokens: Mapped[int | None] = mapped_column(nullable=True)
+    latency_ms: Mapped[int] = mapped_column(nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
 class ReviewRecord(Base):
     __tablename__ = "reviews"
     __table_args__ = (Index("ix_reviews_outcome", "outcome"),)

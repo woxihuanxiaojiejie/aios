@@ -30,6 +30,7 @@ class PostgresStorage:
         engine: Engine | None = None,
         session_factory: Callable[[], Session] | None = None,
     ) -> None:
+        self._database_url = database_url
         if session_factory is not None:
             self._engine = engine
             self._session_factory = session_factory
@@ -144,3 +145,7 @@ class PostgresStorage:
     def dispose(self) -> None:
         if self._engine is not None:
             self._engine.dispose()
+
+    @property
+    def database_url(self) -> str | None:
+        return self._database_url
