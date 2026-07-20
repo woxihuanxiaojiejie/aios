@@ -1,465 +1,234 @@
-import { useState, type ReactNode } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BarChart3, Brain, FilePlus2, RefreshCw, Search } from "lucide-react";
-
 import {
-  ApiError,
-  researchApi,
-  type DecisionRunResponse,
-  type EvidenceImportResponse,
-  type HistoryResponse,
-  type MarketResponse,
-  type SettlementResponse,
-} from "./api";
+  Bell,
+  Building2,
+  LineChart,
+  Newspaper,
+  Search,
+  Sparkles,
+} from "lucide-react";
+import type { ReactNode } from "react";
+
 import { CandlestickChart } from "./CandlestickChart";
 import { HistoryTable } from "./HistoryTable";
+import type { HistoryRow, MarketBar } from "./api";
 
-const DEFAULT_SYMBOL = "000001.SZ";
+const symbol = "000001.SZ";
+
+const bars: MarketBar[] = [
+  bar("2026-06-29", "10.22", "10.32", "10.02", "10.24", "112413978"),
+  bar("2026-06-30", "10.22", "10.22", "10.04", "10.05", "111135281"),
+  bar("2026-07-01", "10.05", "10.18", "9.99", "10.16", "90688982"),
+  bar("2026-07-02", "10.20", "10.36", "10.17", "10.28", "100474867"),
+  bar("2026-07-03", "10.29", "10.40", "10.18", "10.29", "86332664"),
+  bar("2026-07-06", "10.25", "10.52", "10.22", "10.50", "106104863"),
+  bar("2026-07-07", "10.46", "10.51", "10.35", "10.47", "80522115"),
+  bar("2026-07-08", "10.44", "10.63", "10.34", "10.60", "95076022"),
+  bar("2026-07-09", "10.55", "10.59", "10.43", "10.49", "74719101"),
+  bar("2026-07-10", "10.50", "10.51", "10.40", "10.45", "95732035"),
+  bar("2026-07-13", "10.42", "10.55", "10.38", "10.54", "92474624"),
+  bar("2026-07-14", "10.53", "10.70", "10.48", "10.69", "119371535"),
+  bar("2026-07-15", "10.65", "10.87", "10.63", "10.84", "98142155"),
+  bar("2026-07-16", "10.85", "10.93", "10.72", "10.77", "80076623"),
+  bar("2026-07-17", "10.75", "10.88", "10.72", "10.78", "107549901"),
+];
+
+const historyRows: HistoryRow[] = [
+  {
+    time: "2026-07-17T15:00:00Z",
+    type: "预测",
+    decision_id: "dc_1",
+    direction: "观望",
+    confidence: 0.8,
+    realized_return: "--",
+    review_outcome: "等待验证",
+    status: "进行中",
+  },
+  {
+    time: "2026-07-10T15:00:00Z",
+    type: "预测",
+    decision_id: "dc_2",
+    direction: "谨慎看多",
+    confidence: 0.6,
+    realized_return: "+1.2%",
+    review_outcome: "符合预期",
+    status: "已复盘",
+  },
+  {
+    time: "2026-07-03T15:00:00Z",
+    type: "预测",
+    decision_id: "dc_3",
+    direction: "观望",
+    confidence: 0.7,
+    realized_return: "0.0%",
+    review_outcome: "维持判断",
+    status: "已复盘",
+  },
+];
 
 export function ResearchWorkbench() {
-  const [input, setInput] = useState(DEFAULT_SYMBOL);
-  const [symbol, setSymbol] = useState(DEFAULT_SYMBOL);
-  const [evidence, setEvidence] = useState<EvidenceImportResponse | null>(null);
-  const [decision, setDecision] = useState<DecisionRunResponse | null>(null);
-  const [settlement, setSettlement] = useState<SettlementResponse | null>(null);
-  const queryClient = useQueryClient();
-
-  const market = useQuery({
-    queryKey: ["market", symbol],
-    queryFn: () => researchApi.market(symbol),
-  });
-
-  const history = useQuery({
-    queryKey: ["history", symbol],
-    queryFn: () => researchApi.history(symbol),
-  });
-
-  const evidenceMutation = useMutation({
-    mutationFn: () => researchApi.createEvidence(symbol),
-    onSuccess: async (result) => {
-      setEvidence(result);
-      await queryClient.invalidateQueries({ queryKey: ["history", symbol] });
-    },
-  });
-
-  const decisionMutation = useMutation({
-    mutationFn: async () => {
-      const evidenceIds =
-        evidence?.evidence_ids ??
-        history.data?.latest_experiment?.evidence_ids ??
-        (history.data?.latest_evidence
-          ? [history.data.latest_evidence.evidence_id]
-          : []);
-      if (evidenceIds.length === 0) {
-        throw new ApiError(
-          400,
-          "missing_evidence",
-          "Create Evidence before running AI analysis.",
-        );
-      }
-      const experiment = await researchApi.createExperiment(symbol, evidenceIds);
-      return researchApi.runDecision(experiment.experiment_id, symbol, "1d");
-    },
-    onSuccess: async (result) => {
-      setDecision(result);
-      setSettlement(null);
-      await queryClient.invalidateQueries({ queryKey: ["history", symbol] });
-    },
-  });
-
-  const settlementMutation = useMutation({
-    mutationFn: () => {
-      const decisionId =
-        decision?.decision.decision_id ?? history.data?.latest_decision?.decision_id;
-      if (!decisionId) {
-        throw new ApiError(
-          400,
-          "missing_decision",
-          "Create or select a Decision before settlement.",
-        );
-      }
-      return researchApi.settleDecision(decisionId);
-    },
-    onSuccess: async (result) => {
-      setSettlement(result);
-      await queryClient.invalidateQueries({ queryKey: ["history", symbol] });
-    },
-  });
-
-  const activeDecision = decision?.decision ?? history.data?.latest_decision ?? null;
-  const activeSettlement = settlement ?? fromHistory(history.data);
-
   return (
-    <main className="shell">
-      <header className="toolbar">
-        <div>
-          <h1>AIOS Research</h1>
-          <p>REAL MARKET DATA · REAL LLM · PostgreSQL-backed workflow</p>
-        </div>
-        <form
-          className="symbol-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            setSymbol(input.trim().toUpperCase());
-            setEvidence(null);
-            setDecision(null);
-            setSettlement(null);
-          }}
-        >
-          <label htmlFor="symbol">Stock Symbol</label>
+    <main className="research-page">
+      <header className="research-hero">
+        <div className="search-shell">
+          <Search className="search-icon" size={22} />
           <input
-            id="symbol"
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            placeholder="000001.SZ"
+            aria-label="搜索股票"
+            className="stock-search"
+            placeholder="搜索股票（名称/代码）"
           />
-          <button type="submit">
-            <Search size={16} />
-            Load
+          <button className="primary-action" type="button">
+            开始研究
           </button>
-        </form>
+        </div>
       </header>
 
-      <section className="status-strip">
-        <Status label="Symbol" value={symbol} />
-        <Status label="Market" value={market.data?.market ?? "Unavailable"} />
-        <Status label="Market data" value={market.data?.data_source ?? "Pending"} />
-        <Status label="Source" value={market.data?.source ?? "Unavailable"} />
-        <Status
-          label="Updated"
-          value={market.data ? formatDateTime(market.data.available_at) : "Pending"}
-        />
+      <section className="main-stage">
+        <section className="market-workspace">
+          <div className="section-title">
+            <LineChart size={20} />
+            <h2>行情与K线</h2>
+          </div>
+          <div className="ticker-summary">
+            <div>
+              <span>股票</span>
+              <strong>平安银行 {symbol}</strong>
+            </div>
+            <div>
+              <span>最新价</span>
+              <strong>10.78</strong>
+            </div>
+            <div>
+              <span>涨跌幅</span>
+              <strong className="rise">+0.09%</strong>
+            </div>
+            <div>
+              <span>成交量</span>
+              <strong>1.08亿</strong>
+            </div>
+          </div>
+          <CandlestickChart bars={bars} />
+        </section>
+
+        <aside className="research-report">
+          <div className="section-title">
+            <Sparkles size={20} />
+            <h2>AI研究报告</h2>
+          </div>
+          <ReportBlock label="建议">
+            <strong className="recommendation">观望</strong>
+          </ReportBlock>
+          <ReportBlock label="AI信心">
+            <div className="stars" aria-label="四星信心">
+              ★★★★☆
+            </div>
+          </ReportBlock>
+          <ReportBlock label="主要观点">
+            <p>近期价格维持窄幅震荡，量能尚未出现明确放大，趋势信号仍需等待确认。</p>
+          </ReportBlock>
+          <ReportBlock label="风险">
+            <p>短线波动可能受大盘情绪和银行板块估值修复节奏影响。</p>
+          </ReportBlock>
+          <ReportBlock label="重点关注">
+            <p>关注成交量变化、前高压力位表现，以及后续公告中的资产质量信息。</p>
+          </ReportBlock>
+        </aside>
       </section>
 
-      <div className="grid">
-        <section className="panel market-panel">
-          <SectionHeader
-            icon={<BarChart3 size={18} />}
-            title="Market"
-            action={
-              <button
-                type="button"
-                onClick={() => market.refetch()}
-                disabled={market.isFetching}
-              >
-                <RefreshCw size={16} />
-                Refresh
-              </button>
-            }
-          />
-          <AsyncState query={market} />
-          {market.data ? <MarketSection market={market.data} /> : null}
-        </section>
+      <section className="insight-grid">
+        <InfoPanel icon={<Newspaper size={18} />} title="新闻">
+          <InfoLine label="今日新闻" value="暂无数据" />
+          <InfoLine label="今天公告" value="暂无数据" />
+        </InfoPanel>
 
-        <section className="panel action-panel">
-          <SectionHeader icon={<FilePlus2 size={18} />} title="Evidence" />
-          <button
-            type="button"
-            onClick={() => evidenceMutation.mutate()}
-            disabled={!market.data || evidenceMutation.isPending}
-          >
-            <FilePlus2 size={16} />
-            Create Evidence
-          </button>
-          <MutationState mutation={evidenceMutation} />
-          <EvidenceSection evidence={evidence} history={history.data} />
-        </section>
+        <InfoPanel icon={<Building2 size={18} />} title="公司信息">
+          <InfoLine label="公司简介" value="--" />
+          <InfoLine label="所属行业" value="--" />
+          <InfoLine label="主营业务" value="--" />
+          <InfoLine label="市值" value="--" />
+          <InfoLine label="PE" value="--" />
+          <InfoLine label="PB" value="--" />
+        </InfoPanel>
 
-        <section className="panel decision-panel">
-          <SectionHeader icon={<Brain size={18} />} title="AI Decision" />
-          <button
-            type="button"
-            onClick={() => decisionMutation.mutate()}
-            disabled={decisionMutation.isPending}
-          >
-            <Brain size={16} />
-            Run AI Analysis
-          </button>
-          <MutationState mutation={decisionMutation} />
-          <DecisionSection decision={decision} history={history.data} />
-        </section>
+        <InfoPanel title="历史预测" wide>
+          <HistoryTable rows={historyRows} />
+        </InfoPanel>
 
-        <section className="panel settlement-panel">
-          <SectionHeader title="Settlement / Review" />
-          <button
-            type="button"
-            onClick={() => settlementMutation.mutate()}
-            disabled={!activeDecision || settlementMutation.isPending}
-          >
-            Settle Decision
-          </button>
-          {activeDecision ? (
-            <p className="hint">
-              Valid until {formatDateTime(activeDecision.valid_until)}. If this
-              Decision is not due, the backend will reject settlement.
-            </p>
-          ) : null}
-          <MutationState mutation={settlementMutation} />
-          <SettlementSection settlement={activeSettlement} />
-        </section>
-      </div>
-
-      <section className="panel history-panel">
-        <SectionHeader title="History" />
-        <AsyncState query={history} />
-        <HistoryTable rows={history.data?.rows ?? []} />
+        <InfoPanel icon={<Bell size={18} />} title="AI复盘">
+          <InfoLine label="收益" value="--" />
+          <InfoLine label="评价" value="--" />
+          <InfoLine label="原因" value="--" />
+        </InfoPanel>
       </section>
     </main>
   );
 }
 
-function MarketSection({ market }: { market: MarketResponse }) {
+function ReportBlock({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
   return (
-    <>
-      <div className="quote-grid">
-        <Metric label="Latest Price" value={market.latest.close} />
-        <Metric label="Open" value={market.latest.open} />
-        <Metric label="High" value={market.latest.high} />
-        <Metric label="Low" value={market.latest.low} />
-        <Metric label="Close" value={market.latest.close} />
-        <Metric label="Change" value={market.change ?? "Unavailable"} />
-        <Metric
-          label="Change %"
-          value={
-            market.change_percent
-              ? `${(Number(market.change_percent) * 100).toFixed(2)}%`
-              : "Unavailable"
-          }
-        />
-        <Metric label="Volume" value={market.latest.volume} />
-        <Metric label="Observed" value={market.latest.trade_date} />
-        <Metric label="Available" value={formatDateTime(market.available_at)} />
-      </div>
-      <CandlestickChart bars={market.bars} />
-    </>
+    <section className="report-block">
+      <h3>{label}</h3>
+      {children}
+    </section>
   );
 }
 
-function EvidenceSection({
-  evidence,
-  history,
-}: {
-  evidence: EvidenceImportResponse | null;
-  history: HistoryResponse | undefined;
-}) {
-  const latest = evidence?.latest_evidence ?? history?.latest_evidence ?? null;
-  if (!latest) {
-    return <div className="empty-state">No Evidence has been created yet.</div>;
-  }
-  return (
-    <dl className="detail-list">
-      <Detail label="Evidence ID" value={latest.evidence_id} />
-      <Detail label="Source" value={latest.source} />
-      <Detail label="Observed" value={latest.published_at} />
-      <Detail label="Available" value={latest.available_at} />
-      <Detail label="Summary" value={latest.summary} />
-    </dl>
-  );
-}
-
-function DecisionSection({
-  decision,
-  history,
-}: {
-  decision: DecisionRunResponse | null;
-  history: HistoryResponse | undefined;
-}) {
-  const active = decision?.decision ?? history?.latest_decision ?? null;
-  const generation = decision?.generation ?? null;
-  if (!active) {
-    return <div className="empty-state">Run AI analysis to create a Decision.</div>;
-  }
-  const isNoTrade = ["hold", "observe", "no_trade"].includes(active.action);
-  return (
-    <dl className="detail-list">
-      <Detail label="Symbol" value={active.symbol} />
-      <Detail label="Direction" value={active.action} />
-      <Detail label="No trade / abstain" value={isNoTrade ? "Yes" : "No"} />
-      <Detail label="Confidence" value={`${Math.round(active.confidence * 100)}%`} />
-      <Detail label="Horizon" value={active.horizon} />
-      <Detail label="Thesis" value={active.reasoning_summary} />
-      <Detail label="Evidence" value={active.evidence_ids.join(", ")} />
-      <Detail label="Provider" value={generation?.provider ?? "Unavailable"} />
-      <Detail label="Model" value={generation?.model ?? "Unavailable"} />
-      <Detail label="Request ID" value={generation?.request_id ?? "Unavailable"} />
-      <Detail label="Created" value={formatDateTime(active.created_at)} />
-      <Detail label="Status" value={active.status} />
-    </dl>
-  );
-}
-
-function SettlementSection({
-  settlement,
-}: {
-  settlement: SettlementResponse | null;
-}) {
-  if (!settlement) {
-    return <div className="empty-state">No Settlement or Review yet.</div>;
-  }
-  return (
-    <div className="settlement-grid">
-      <dl className="detail-list">
-        <h3>Outcome</h3>
-        <Detail label="Entry" value={settlement.outcome.entry_price} />
-        <Detail label="Exit" value={settlement.outcome.exit_price} />
-        <Detail label="Return" value={settlement.outcome.realized_return} />
-        <Detail label="Adverse" value={settlement.outcome.maximum_adverse_excursion} />
-        <Detail label="Favorable" value={settlement.outcome.maximum_favorable_excursion} />
-        <Detail label="Status" value={settlement.outcome.status} />
-        <Detail label="Settled" value={formatDateTime(settlement.outcome.settled_at)} />
-      </dl>
-      <dl className="detail-list">
-        <h3>Evaluation</h3>
-        <Detail label="Direction" value={settlement.evaluation.directional_result} />
-        <Detail label="Risk" value={settlement.evaluation.risk_result} />
-        <Detail label="Final" value={settlement.evaluation.final_result} />
-        <Detail label="Summary" value={settlement.evaluation.explanation} />
-      </dl>
-      <dl className="detail-list">
-        <h3>Review</h3>
-        <Detail label="Actual Return" value={settlement.review.actual_return} />
-        <Detail
-          label="Direction Correct"
-          value={nullableBoolean(settlement.review.direction_correct)}
-        />
-        <Detail
-          label="Risk Breached"
-          value={nullableBoolean(settlement.review.risk_limit_breached)}
-        />
-        <Detail label="Outcome" value={settlement.review.outcome} />
-        <Detail label="Tags" value={settlement.review.cause_tags.join(", ")} />
-        <Detail label="Summary" value={settlement.review.review_summary} />
-      </dl>
-    </div>
-  );
-}
-
-function fromHistory(history: HistoryResponse | undefined): SettlementResponse | null {
-  if (
-    !history?.latest_outcome ||
-    !history.latest_evaluation ||
-    !history.latest_review
-  ) {
-    return null;
-  }
-  return {
-    outcome: history.latest_outcome,
-    evaluation: history.latest_evaluation,
-    review: history.latest_review,
-  };
-}
-
-function AsyncState({
-  query,
-}: {
-  query: { isLoading: boolean; isFetching: boolean; error: Error | null };
-}) {
-  if (query.isLoading) {
-    return <div className="state">Loading...</div>;
-  }
-  if (query.error) {
-    return <ErrorMessage error={query.error} />;
-  }
-  if (query.isFetching) {
-    return <div className="state subtle">Refreshing...</div>;
-  }
-  return null;
-}
-
-function MutationState({
-  mutation,
-}: {
-  mutation: { isPending: boolean; error: Error | null; isSuccess: boolean };
-}) {
-  if (mutation.isPending) {
-    return <div className="state">Loading...</div>;
-  }
-  if (mutation.error) {
-    return <ErrorMessage error={mutation.error} />;
-  }
-  if (mutation.isSuccess) {
-    return <div className="state success">Saved.</div>;
-  }
-  return null;
-}
-
-function ErrorMessage({ error }: { error: Error }) {
-  if (error instanceof ApiError) {
-    return (
-      <div className="state error">
-        {error.code}: {error.message}
-      </div>
-    );
-  }
-  return <div className="state error">{error.message}</div>;
-}
-
-function SectionHeader({
+function InfoPanel({
   icon,
   title,
-  action,
+  wide = false,
+  children,
 }: {
   icon?: ReactNode;
   title: string;
-  action?: ReactNode;
+  wide?: boolean;
+  children: ReactNode;
 }) {
   return (
-    <div className="section-header">
-      <h2>
+    <section className={wide ? "info-panel wide-panel" : "info-panel"}>
+      <div className="panel-heading">
         {icon}
-        {title}
-      </h2>
-      {action}
-    </div>
+        <h2>{title}</h2>
+      </div>
+      {children}
+    </section>
   );
 }
 
-function Status({ label, value }: { label: string; value: string }) {
+function InfoLine({ label, value }: { label: string; value: string }) {
   return (
-    <div>
+    <div className="info-line">
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="metric">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function Detail({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | number | boolean | null;
-}) {
-  return (
-    <>
-      <dt>{label}</dt>
-      <dd>{value === null || value === "" ? "Unavailable" : String(value)}</dd>
-    </>
-  );
-}
-
-function nullableBoolean(value: boolean | null) {
-  if (value === null) {
-    return "Unavailable";
-  }
-  return value ? "Yes" : "No";
-}
-
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value));
+function bar(
+  tradeDate: string,
+  open: string,
+  high: string,
+  low: string,
+  close: string,
+  volume: string,
+): MarketBar {
+  return {
+    symbol,
+    market: "CN_A",
+    trade_date: tradeDate,
+    open,
+    high,
+    low,
+    close,
+    volume,
+    amount: null,
+    adjustment: "none",
+    source: "前端静态展示",
+    fetched_at: "2026-07-19T10:00:00Z",
+  };
 }

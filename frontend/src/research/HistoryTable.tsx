@@ -9,39 +9,27 @@ import type { HistoryRow } from "./api";
 
 const columns: ColumnDef<HistoryRow>[] = [
   {
-    header: "Time",
+    header: "日期",
     accessorKey: "time",
     cell: ({ getValue }) => formatDate(String(getValue())),
   },
   {
-    header: "Type",
-    accessorKey: "type",
+    header: "股票",
+    id: "stock",
+    cell: () => "平安银行",
   },
   {
-    header: "Direction",
+    header: "AI建议",
     accessorKey: "direction",
-    cell: ({ getValue }) => getValue<string | null>() ?? "Unavailable",
+    cell: ({ getValue }) => getValue<string | null>() ?? "--",
   },
   {
-    header: "Confidence",
-    accessorKey: "confidence",
-    cell: ({ getValue }) => {
-      const value = getValue<number | null>();
-      return value === null ? "Unavailable" : `${Math.round(value * 100)}%`;
-    },
-  },
-  {
-    header: "Realized Return",
+    header: "收益",
     accessorKey: "realized_return",
-    cell: ({ getValue }) => getValue<string | null>() ?? "Unavailable",
+    cell: ({ getValue }) => getValue<string | null>() ?? "--",
   },
   {
-    header: "Review",
-    accessorKey: "review_outcome",
-    cell: ({ getValue }) => getValue<string | null>() ?? "Unavailable",
-  },
-  {
-    header: "Status",
+    header: "状态",
     accessorKey: "status",
   },
 ];
@@ -58,7 +46,7 @@ export function HistoryTable({ rows }: Props) {
   });
 
   if (rows.length === 0) {
-    return <div className="empty-state">No saved records for this symbol.</div>;
+    return <div className="empty-state">暂无历史预测</div>;
   }
 
   return (
@@ -95,7 +83,7 @@ export function HistoryTable({ rows }: Props) {
 }
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat("zh-CN", {
     month: "short",
     day: "2-digit",
     hour: "2-digit",
