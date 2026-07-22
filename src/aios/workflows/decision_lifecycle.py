@@ -64,6 +64,10 @@ class DecisionLifecycleService:
     ) -> list[EntityT]:
         return self._storage.list(entity_type)
 
+    @property
+    def storage(self) -> Storage:
+        return self._storage
+
     def create_decision(self, decision: Decision) -> Decision:
         self._require_exists(Experiment, decision.experiment_id)
         experiment = self._storage.get(Experiment, decision.experiment_id)

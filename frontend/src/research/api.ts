@@ -57,6 +57,135 @@ export type EvidenceImportResponse = {
   latest_evidence: Evidence | null;
 };
 
+export type ListResponse<T> = {
+  items: T[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export type WatchlistItem = {
+  watchlist_item_id: string;
+  symbol: string;
+  market: string;
+  note: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+};
+
+export type ResearchSession = {
+  research_session_id: string;
+  scope: {
+    watchlist_item_id: string;
+    symbol: string;
+    market: string;
+    watchlist_note_snapshot: string | null;
+    horizon_days: number;
+    as_of: string;
+    valid_until: string;
+  };
+  status: string;
+  evidence_ids: string[];
+  experiment_id: string | null;
+  cancelled_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AgentReport = {
+  report_id: string;
+  research_session_id: string;
+  role: string;
+  summary: string;
+  stance: string;
+  confidence: number;
+  evidence_ids: string[];
+  source: string;
+  raw_reference: string | null;
+  status: string;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Hypothesis = {
+  hypothesis_id: string;
+  research_session_id: string;
+  statement: string;
+  rationale: string;
+  direction: string;
+  horizon_days: number;
+  confidence: number;
+  supporting_report_ids: string[];
+  supporting_evidence_ids: string[];
+  status: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Debate = {
+  debate_id: string;
+  research_session_id: string;
+  report_ids: string[];
+  hypothesis_ids: string[];
+  status: string;
+  final_decision_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type DebateStatement = {
+  statement_id: string;
+  debate_id: string;
+  agent_report_id: string;
+  hypothesis_id: string;
+  stance: string;
+  reasoning: string;
+  evidence_ids: string[];
+  confidence_before: number;
+  confidence_after: number;
+  created_at: string;
+};
+
+export type DecisionProposal = {
+  proposal_id: string;
+  debate_id: string;
+  conclusion: string;
+  confidence: number;
+  thesis: string;
+  supporting_hypothesis_ids: string[];
+  rejected_hypothesis_ids: string[];
+  evidence_ids: string[];
+  risk_notes: string[];
+  created_at: string;
+};
+
+export type RiskReview = {
+  risk_review_id: string;
+  proposal_id: string;
+  verdict: string;
+  final_conclusion: string;
+  final_confidence: number;
+  reasons: string[];
+  created_at: string;
+};
+
+export type DecisionAssembly = {
+  assembly_id: string;
+  research_session_id: string;
+  debate_id: string;
+  proposal_id: string;
+  risk_review_id: string;
+  decision_id: string;
+  conclusion: string;
+  report_ids: string[];
+  hypothesis_ids: string[];
+  evidence_ids: string[];
+  created_at: string;
+};
+
 export type Experiment = {
   experiment_id: string;
   name: string;
@@ -158,6 +287,42 @@ export type SettlementResponse = {
   review: Review;
 };
 
+export type Learning = {
+  learning_id: string;
+  review_id: string;
+  learning_type: string;
+  target: string;
+  before: unknown;
+  after: unknown;
+  reason: string;
+  approval_status: string;
+  created_at: string;
+};
+
+export type ResearchSettlementRecord = {
+  research_settlement_id: string;
+  assembly_id: string;
+  research_session_id: string;
+  debate_id: string;
+  proposal_id: string;
+  risk_review_id: string;
+  decision_id: string;
+  outcome_id: string;
+  evaluation_id: string;
+  review_id: string;
+  learning_ids: string[];
+  evidence_ids: string[];
+  report_ids: string[];
+  hypothesis_ids: string[];
+  settled_at: string;
+  created_at: string;
+};
+
+export type AssemblySettlementResponse = SettlementResponse & {
+  record: ResearchSettlementRecord;
+  learnings: Learning[];
+};
+
 export type HistoryRow = {
   time: string;
   type: string;
@@ -216,6 +381,120 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const researchApi = {
+  listWatchlist() {
+    return request<ListResponse<WatchlistItem>>("/research/watchlist");
+  },
+  addWatchlist(symbol: string, market: string, note?: string) {
+    return request<WatchlistItem>("/research/watchlist", {
+      method: "POST",
+      body: JSON.stringify({ symbol, market, note: note || null }),
+    });
+  },
+  listEvidence() {
+    return request<ListResponse<Evidence>>("/evidence");
+  },
+  createManualEvidence(payload: {
+    evidence_type: string;
+    source: string;
+    symbols: string[];
+    published_at: string;
+    available_at: string;
+    summary: string;
+    reliability: number;
+    content_hash: string;
+    metadata: Record<string, unknown>;
+  }) {
+    return request<Evidence>("/evidence", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  listSessions() {
+    return request<ListResponse<ResearchSession>>("/research/sessions");
+  },
+  createSession(payload: {
+    watchlist_item_id: string;
+    horizon_days: number;
+    as_of: string;
+    evidence_ids: string[];
+  }) {
+    return request<ResearchSession>("/research/sessions", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  listAgentReports(sessionId: string) {
+    return request<ListResponse<AgentReport>>(
+      `/research/sessions/${sessionId}/agent-reports`,
+    );
+  },
+  createAgentReport(sessionId: string, payload: Record<string, unknown>) {
+    return request<AgentReport>(
+      `/research/sessions/${sessionId}/agent-reports`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    );
+  },
+  listHypotheses(sessionId: string) {
+    return request<ListResponse<Hypothesis>>(
+      `/research/sessions/${sessionId}/hypotheses`,
+    );
+  },
+  createHypothesis(sessionId: string, payload: Record<string, unknown>) {
+    return request<Hypothesis>(`/research/sessions/${sessionId}/hypotheses`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  createDebate(sessionId: string) {
+    return request<Debate>(`/research/sessions/${sessionId}/debates`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+  },
+  listDebates(sessionId: string) {
+    return request<ListResponse<Debate>>(
+      `/research/sessions/${sessionId}/debates`,
+    );
+  },
+  addDebateStatement(debateId: string, payload: Record<string, unknown>) {
+    return request<DebateStatement>(`/research/debates/${debateId}/statements`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  createProposal(debateId: string, payload: Record<string, unknown>) {
+    return request<DecisionProposal>(`/research/debates/${debateId}/proposal`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  createRiskReview(proposalId: string, payload: Record<string, unknown>) {
+    return request<RiskReview>(`/research/proposals/${proposalId}/risk-review`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  finalizeProposal(proposalId: string) {
+    return request<DecisionAssembly>(`/research/proposals/${proposalId}/finalize`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+  },
+  settleAssembly(assemblyId: string, asOf?: string) {
+    return request<AssemblySettlementResponse>(
+      `/research/assemblies/${assemblyId}/settlement`,
+      {
+        method: "POST",
+        body: JSON.stringify({ as_of: asOf || null }),
+      },
+    );
+  },
+  listLearnings() {
+    return request<ListResponse<Learning>>("/learnings");
+  },
   market(symbol: string) {
     return request<MarketResponse>(
       `/research/market?symbol=${encodeURIComponent(symbol)}`,

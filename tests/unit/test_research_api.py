@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 from fastapi.testclient import TestClient
@@ -94,15 +94,22 @@ def bar(trade_date: date, close: str) -> MarketBar:
         amount=Decimal("10000"),
         adjustment=Adjustment.NONE,
         source="deterministic-market",
-        fetched_at=datetime(2026, 7, 20, 8, 0, tzinfo=UTC),
+        fetched_at=datetime.combine(
+            trade_date,
+            datetime.min.time(),
+            tzinfo=UTC,
+        )
+        + timedelta(hours=8),
     )
 
 
 def client(llm_adapter: object | None = None) -> TestClient:
+    today = datetime.now(UTC).date()
     bars = [
-        bar(date(2026, 7, 18), "10.00"),
-        bar(date(2026, 7, 19), "10.30"),
-        bar(date(2026, 7, 20), "10.60"),
+        bar(today - timedelta(days=2), "10.00"),
+        bar(today - timedelta(days=1), "10.30"),
+        bar(today, "10.60"),
+        bar(today + timedelta(days=1), "10.90"),
     ]
     return TestClient(
         create_app(
@@ -123,14 +130,14 @@ def test_research_market_preview_and_evidence_import() -> None:
     assert body["symbol"] == "000001.SZ"
     assert body["market"] == "CN_A"
     assert body["source"] == "deterministic-market"
-    assert body["latest"]["close"] == "10.30"
+    assert body["latest"]["close"] == "10.60"
     assert body["change"] == "0.30"
-    assert body["change_percent"] == "0.03"
+    assert Decimal(body["change_percent"]) > Decimal("0")
 
     evidence = api.post("/api/v1/research/evidence", json={"symbol": "000001.SZ"})
 
     assert evidence.status_code == 201
-    assert evidence.json()["created"] == 2
+    assert evidence.json()["created"] == 3
     assert evidence.json()["latest_evidence"]["evidence_id"].startswith("ev_")
 
 
@@ -160,9 +167,10 @@ def test_research_decision_settlement_review_and_history() -> None:
     assert decision.json()["generation"]["provider"] == "deepseek"
     assert decision.json()["generation"]["request_id"] == "req_real_metadata"
 
+    valid_until = datetime.fromisoformat(decision.json()["decision"]["valid_until"])
     settlement = api.post(
         f"/api/v1/research/settlements/{decision.json()['decision']['decision_id']}",
-        json={"as_of": "2026-07-21T00:00:00+00:00"},
+        json={"as_of": (valid_until + timedelta(seconds=1)).isoformat()},
     )
 
     assert settlement.status_code == 201

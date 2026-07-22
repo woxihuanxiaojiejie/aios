@@ -1,39 +1,78 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy.orm import DeclarativeBase
 
 from aios.kernel.base import KernelModel, ensure_utc
+from aios.kernel.debate import (
+    DebateRecord,
+    DebateStatement,
+    DecisionAssemblyRecord,
+    DecisionProposal,
+    RiskReview,
+)
 from aios.kernel.decision import Decision
 from aios.kernel.enums import (
     Action,
+    AgentReportStatus,
+    AgentRole,
     ApprovalStatus,
+    DebateStance,
+    DebateStatus,
     DecisionStatus,
     DirectionalResult,
     EvaluationFinalResult,
     ExperimentStatus,
+    HypothesisStatus,
     LearningType,
     Outcome,
     OutcomeStatus,
+    ResearchConclusion,
+    ResearchSessionStatus,
     ReturnResult,
     RiskResult,
+    RiskVerdict,
+    WatchlistStatus,
 )
 from aios.kernel.errors import UnsupportedEntityError
 from aios.kernel.evidence import Evidence
 from aios.kernel.experiment import Experiment
 from aios.kernel.learning import Learning
+from aios.kernel.research import ResearchScope, ResearchSession
+from aios.kernel.research_records import AgentReport, Hypothesis
+from aios.kernel.research_run import ResearchRun, ResearchRunStage, ResearchRunStatus
 from aios.kernel.review import Review
-from aios.kernel.settlement import DecisionEvaluation, DecisionOutcome
+from aios.kernel.settlement import (
+    DecisionEvaluation,
+    DecisionOutcome,
+    ResearchSettlementRecord,
+)
+from aios.kernel.watchlist import WatchlistItem
 from aios.storage.postgres.models import (
+    AgentReportEvidenceRecord,
+    AgentReportRecord,
+    DebateRecordModel,
+    DebateStatementRecord,
+    DecisionAssemblyRecordModel,
     DecisionEvaluationRecord,
     DecisionOutcomeRecord,
+    DecisionProposalRecord,
     DecisionRecord,
     EvidenceRecord,
     ExperimentRecord,
+    HypothesisEvidenceRecord,
+    HypothesisRecord,
+    HypothesisReportRecord,
     LearningRecord,
+    ResearchRunRecord,
+    ResearchSessionEvidenceRecord,
+    ResearchSessionRecord,
+    ResearchSettlementRecordModel,
     ReviewRecord,
+    RiskReviewRecord,
+    WatchlistItemRecord,
 )
 
 type Record = (
@@ -44,6 +83,18 @@ type Record = (
     | LearningRecord
     | DecisionOutcomeRecord
     | DecisionEvaluationRecord
+    | ResearchSettlementRecordModel
+    | WatchlistItemRecord
+    | ResearchSessionRecord
+    | AgentReportRecord
+    | HypothesisRecord
+    | DebateRecordModel
+    | DebateStatementRecord
+    | DecisionProposalRecord
+    | RiskReviewRecord
+    | DecisionAssemblyRecordModel
+    | ResearchSettlementRecordModel
+    | ResearchRunRecord
 )
 
 
@@ -129,6 +180,25 @@ def to_model(entity: KernelModel) -> Record:
             explanation=entity.explanation,
             created_at=entity.created_at,
         )
+    if isinstance(entity, ResearchSettlementRecord):
+        return ResearchSettlementRecordModel(
+            research_settlement_id=entity.research_settlement_id,
+            assembly_id=entity.assembly_id,
+            research_session_id=entity.research_session_id,
+            debate_id=entity.debate_id,
+            proposal_id=entity.proposal_id,
+            risk_review_id=entity.risk_review_id,
+            decision_id=entity.decision_id,
+            outcome_id=entity.outcome_id,
+            evaluation_id=entity.evaluation_id,
+            review_id=entity.review_id,
+            learning_ids=list(entity.learning_ids),
+            evidence_ids=list(entity.evidence_ids),
+            report_ids=list(entity.report_ids),
+            hypothesis_ids=list(entity.hypothesis_ids),
+            settled_at=entity.settled_at,
+            created_at=entity.created_at,
+        )
     if isinstance(entity, Review):
         return ReviewRecord(
             review_id=entity.review_id,
@@ -152,6 +222,169 @@ def to_model(entity: KernelModel) -> Record:
             reason=entity.reason,
             approval_status=entity.approval_status.value,
             created_at=entity.created_at,
+        )
+    if isinstance(entity, WatchlistItem):
+        return WatchlistItemRecord(
+            watchlist_item_id=entity.watchlist_item_id,
+            symbol=entity.symbol,
+            market=entity.market,
+            note=entity.note,
+            status=entity.status.value,
+            created_at=entity.created_at,
+            updated_at=entity.updated_at,
+            archived_at=entity.archived_at,
+        )
+    if isinstance(entity, ResearchSession):
+        return ResearchSessionRecord(
+            research_session_id=entity.research_session_id,
+            watchlist_item_id=entity.scope.watchlist_item_id,
+            symbol=entity.scope.symbol,
+            market=entity.scope.market,
+            watchlist_note_snapshot=entity.scope.watchlist_note_snapshot,
+            horizon_days=entity.scope.horizon_days,
+            as_of=entity.scope.as_of,
+            valid_until=entity.scope.valid_until,
+            status=entity.status.value,
+            experiment_id=entity.experiment_id,
+            cancelled_at=entity.cancelled_at,
+            created_at=entity.created_at,
+            updated_at=entity.updated_at,
+            evidence_links=[
+                ResearchSessionEvidenceRecord(
+                    research_session_id=entity.research_session_id,
+                    evidence_id=evidence_id,
+                    position=position,
+                )
+                for position, evidence_id in enumerate(entity.evidence_ids)
+            ],
+        )
+    if isinstance(entity, AgentReport):
+        return AgentReportRecord(
+            report_id=entity.report_id,
+            research_session_id=entity.research_session_id,
+            role=entity.role.value,
+            summary=entity.summary,
+            stance=entity.stance,
+            confidence=entity.confidence,
+            source=entity.source,
+            raw_reference=entity.raw_reference,
+            status=entity.status.value,
+            archived_at=entity.archived_at,
+            created_at=entity.created_at,
+            updated_at=entity.updated_at,
+            evidence_links=[
+                AgentReportEvidenceRecord(
+                    report_id=entity.report_id,
+                    evidence_id=evidence_id,
+                    position=position,
+                )
+                for position, evidence_id in enumerate(entity.evidence_ids)
+            ],
+        )
+    if isinstance(entity, Hypothesis):
+        return HypothesisRecord(
+            hypothesis_id=entity.hypothesis_id,
+            research_session_id=entity.research_session_id,
+            statement=entity.statement,
+            rationale=entity.rationale,
+            direction=entity.direction,
+            horizon_days=entity.horizon_days,
+            confidence=entity.confidence,
+            status=entity.status.value,
+            created_at=entity.created_at,
+            updated_at=entity.updated_at,
+            report_links=[
+                HypothesisReportRecord(
+                    hypothesis_id=entity.hypothesis_id,
+                    report_id=report_id,
+                    position=position,
+                )
+                for position, report_id in enumerate(entity.supporting_report_ids)
+            ],
+            evidence_links=[
+                HypothesisEvidenceRecord(
+                    hypothesis_id=entity.hypothesis_id,
+                    evidence_id=evidence_id,
+                    position=position,
+                )
+                for position, evidence_id in enumerate(entity.supporting_evidence_ids)
+            ],
+        )
+    if isinstance(entity, DebateRecord):
+        return DebateRecordModel(
+            debate_id=entity.debate_id,
+            research_session_id=entity.research_session_id,
+            report_ids=list(entity.report_ids),
+            hypothesis_ids=list(entity.hypothesis_ids),
+            status=entity.status.value,
+            final_decision_id=entity.final_decision_id,
+            created_at=entity.created_at,
+            updated_at=entity.updated_at,
+        )
+    if isinstance(entity, DebateStatement):
+        return DebateStatementRecord(
+            statement_id=entity.statement_id,
+            debate_id=entity.debate_id,
+            agent_report_id=entity.agent_report_id,
+            hypothesis_id=entity.hypothesis_id,
+            stance=entity.stance.value,
+            reasoning=entity.reasoning,
+            evidence_ids=list(entity.evidence_ids),
+            confidence_before=entity.confidence_before,
+            confidence_after=entity.confidence_after,
+            created_at=entity.created_at,
+        )
+    if isinstance(entity, DecisionProposal):
+        return DecisionProposalRecord(
+            proposal_id=entity.proposal_id,
+            debate_id=entity.debate_id,
+            conclusion=entity.conclusion.value,
+            confidence=entity.confidence,
+            thesis=entity.thesis,
+            supporting_hypothesis_ids=list(entity.supporting_hypothesis_ids),
+            rejected_hypothesis_ids=list(entity.rejected_hypothesis_ids),
+            evidence_ids=list(entity.evidence_ids),
+            risk_notes=list(entity.risk_notes),
+            created_at=entity.created_at,
+        )
+    if isinstance(entity, RiskReview):
+        return RiskReviewRecord(
+            risk_review_id=entity.risk_review_id,
+            proposal_id=entity.proposal_id,
+            verdict=entity.verdict.value,
+            final_conclusion=entity.final_conclusion.value,
+            final_confidence=entity.final_confidence,
+            reasons=list(entity.reasons),
+            created_at=entity.created_at,
+        )
+    if isinstance(entity, DecisionAssemblyRecord):
+        return DecisionAssemblyRecordModel(
+            assembly_id=entity.assembly_id,
+            research_session_id=entity.research_session_id,
+            debate_id=entity.debate_id,
+            proposal_id=entity.proposal_id,
+            risk_review_id=entity.risk_review_id,
+            decision_id=entity.decision_id,
+            conclusion=entity.conclusion.value,
+            report_ids=list(entity.report_ids),
+            hypothesis_ids=list(entity.hypothesis_ids),
+            evidence_ids=list(entity.evidence_ids),
+            created_at=entity.created_at,
+        )
+    if isinstance(entity, ResearchRun):
+        return ResearchRunRecord(
+            run_id=entity.run_id,
+            research_session_id=entity.research_session_id,
+            watchlist_item_id=entity.watchlist_item_id,
+            current_stage=entity.current_stage,
+            status=entity.status,
+            vibe_run_id=entity.vibe_run_id,
+            workflow=entity.workflow,
+            input_params=entity.input_params,
+            raw_output_reference=entity.raw_output_reference,
+            error=entity.error,
+            created_at=entity.created_at,
+            updated_at=entity.updated_at,
         )
     msg = f"{type(entity).__name__} is not supported by PostgreSQL mapper"
     raise UnsupportedEntityError(msg)
@@ -239,6 +472,25 @@ def model_to_entity(model: DeclarativeBase) -> KernelModel:
             explanation=model.explanation,
             created_at=_utc(model.created_at),
         )
+    if isinstance(model, ResearchSettlementRecordModel):
+        return ResearchSettlementRecord(
+            research_settlement_id=model.research_settlement_id,
+            assembly_id=model.assembly_id,
+            research_session_id=model.research_session_id,
+            debate_id=model.debate_id,
+            proposal_id=model.proposal_id,
+            risk_review_id=model.risk_review_id,
+            decision_id=model.decision_id,
+            outcome_id=model.outcome_id,
+            evaluation_id=model.evaluation_id,
+            review_id=model.review_id,
+            learning_ids=tuple(model.learning_ids),
+            evidence_ids=tuple(model.evidence_ids),
+            report_ids=tuple(model.report_ids),
+            hypothesis_ids=tuple(model.hypothesis_ids),
+            settled_at=_utc(model.settled_at),
+            created_at=_utc(model.created_at),
+        )
     if isinstance(model, ReviewRecord):
         return Review(
             review_id=model.review_id,
@@ -263,6 +515,145 @@ def model_to_entity(model: DeclarativeBase) -> KernelModel:
             approval_status=ApprovalStatus(model.approval_status),
             created_at=_utc(model.created_at),
         )
+    if isinstance(model, WatchlistItemRecord):
+        return WatchlistItem(
+            watchlist_item_id=model.watchlist_item_id,
+            symbol=model.symbol,
+            market=model.market,
+            note=model.note,
+            status=WatchlistStatus(model.status),
+            created_at=_utc(model.created_at),
+            updated_at=_utc(model.updated_at),
+            archived_at=_utc(model.archived_at) if model.archived_at else None,
+        )
+    if isinstance(model, ResearchSessionRecord):
+        return ResearchSession(
+            research_session_id=model.research_session_id,
+            scope=ResearchScope(
+                watchlist_item_id=model.watchlist_item_id,
+                symbol=model.symbol,
+                market=model.market,
+                watchlist_note_snapshot=model.watchlist_note_snapshot,
+                horizon_days=model.horizon_days,
+                as_of=_utc(model.as_of),
+                valid_until=_utc(model.valid_until),
+            ),
+            status=ResearchSessionStatus(model.status),
+            evidence_ids=tuple(link.evidence_id for link in model.evidence_links),
+            experiment_id=model.experiment_id,
+            cancelled_at=_utc(model.cancelled_at) if model.cancelled_at else None,
+            created_at=_utc(model.created_at),
+            updated_at=_utc(model.updated_at),
+        )
+    if isinstance(model, AgentReportRecord):
+        return AgentReport(
+            report_id=model.report_id,
+            research_session_id=model.research_session_id,
+            role=AgentRole(model.role),
+            summary=model.summary,
+            stance=model.stance,
+            confidence=model.confidence,
+            evidence_ids=tuple(link.evidence_id for link in model.evidence_links),
+            source=model.source,
+            raw_reference=model.raw_reference,
+            status=AgentReportStatus(model.status),
+            archived_at=_utc(model.archived_at) if model.archived_at else None,
+            created_at=_utc(model.created_at),
+            updated_at=_utc(model.updated_at),
+        )
+    if isinstance(model, HypothesisRecord):
+        return Hypothesis(
+            hypothesis_id=model.hypothesis_id,
+            research_session_id=model.research_session_id,
+            statement=model.statement,
+            rationale=model.rationale,
+            direction=model.direction,
+            horizon_days=model.horizon_days,
+            confidence=model.confidence,
+            supporting_report_ids=tuple(link.report_id for link in model.report_links),
+            supporting_evidence_ids=tuple(
+                link.evidence_id for link in model.evidence_links
+            ),
+            status=HypothesisStatus(model.status),
+            created_at=_utc(model.created_at),
+            updated_at=_utc(model.updated_at),
+        )
+    if isinstance(model, DebateRecordModel):
+        return DebateRecord(
+            debate_id=model.debate_id,
+            research_session_id=model.research_session_id,
+            report_ids=tuple(model.report_ids),
+            hypothesis_ids=tuple(model.hypothesis_ids),
+            status=DebateStatus(model.status),
+            final_decision_id=model.final_decision_id,
+            created_at=_utc(model.created_at),
+            updated_at=_utc(model.updated_at),
+        )
+    if isinstance(model, DebateStatementRecord):
+        return DebateStatement(
+            statement_id=model.statement_id,
+            debate_id=model.debate_id,
+            agent_report_id=model.agent_report_id,
+            hypothesis_id=model.hypothesis_id,
+            stance=DebateStance(model.stance),
+            reasoning=model.reasoning,
+            evidence_ids=tuple(model.evidence_ids),
+            confidence_before=model.confidence_before,
+            confidence_after=model.confidence_after,
+            created_at=_utc(model.created_at),
+        )
+    if isinstance(model, DecisionProposalRecord):
+        return DecisionProposal(
+            proposal_id=model.proposal_id,
+            debate_id=model.debate_id,
+            conclusion=ResearchConclusion(model.conclusion),
+            confidence=model.confidence,
+            thesis=model.thesis,
+            supporting_hypothesis_ids=tuple(model.supporting_hypothesis_ids),
+            rejected_hypothesis_ids=tuple(model.rejected_hypothesis_ids),
+            evidence_ids=tuple(model.evidence_ids),
+            risk_notes=tuple(model.risk_notes),
+            created_at=_utc(model.created_at),
+        )
+    if isinstance(model, RiskReviewRecord):
+        return RiskReview(
+            risk_review_id=model.risk_review_id,
+            proposal_id=model.proposal_id,
+            verdict=RiskVerdict(model.verdict),
+            final_conclusion=ResearchConclusion(model.final_conclusion),
+            final_confidence=model.final_confidence,
+            reasons=tuple(model.reasons),
+            created_at=_utc(model.created_at),
+        )
+    if isinstance(model, DecisionAssemblyRecordModel):
+        return DecisionAssemblyRecord(
+            assembly_id=model.assembly_id,
+            research_session_id=model.research_session_id,
+            debate_id=model.debate_id,
+            proposal_id=model.proposal_id,
+            risk_review_id=model.risk_review_id,
+            decision_id=model.decision_id,
+            conclusion=ResearchConclusion(model.conclusion),
+            report_ids=tuple(model.report_ids),
+            hypothesis_ids=tuple(model.hypothesis_ids),
+            evidence_ids=tuple(model.evidence_ids),
+            created_at=_utc(model.created_at),
+        )
+    if isinstance(model, ResearchRunRecord):
+        return ResearchRun(
+            run_id=model.run_id,
+            research_session_id=model.research_session_id,
+            watchlist_item_id=model.watchlist_item_id,
+            current_stage=cast("ResearchRunStage", model.current_stage),
+            status=cast("ResearchRunStatus", model.status),
+            vibe_run_id=model.vibe_run_id,
+            workflow=model.workflow,
+            input_params=model.input_params,
+            raw_output_reference=model.raw_output_reference,
+            error=model.error,
+            created_at=_utc(model.created_at),
+            updated_at=_utc(model.updated_at),
+        )
     msg = f"{type(model).__name__} is not supported by PostgreSQL mapper"
     raise UnsupportedEntityError(msg)
 
@@ -278,10 +669,32 @@ def model_for_entity_type(entity_type: type[KernelModel]) -> type[Record]:
         return DecisionOutcomeRecord
     if entity_type is DecisionEvaluation:
         return DecisionEvaluationRecord
+    if entity_type is ResearchSettlementRecord:
+        return ResearchSettlementRecordModel
     if entity_type is Review:
         return ReviewRecord
     if entity_type is Learning:
         return LearningRecord
+    if entity_type is WatchlistItem:
+        return WatchlistItemRecord
+    if entity_type is ResearchSession:
+        return ResearchSessionRecord
+    if entity_type is AgentReport:
+        return AgentReportRecord
+    if entity_type is Hypothesis:
+        return HypothesisRecord
+    if entity_type is DebateRecord:
+        return DebateRecordModel
+    if entity_type is DebateStatement:
+        return DebateStatementRecord
+    if entity_type is DecisionProposal:
+        return DecisionProposalRecord
+    if entity_type is RiskReview:
+        return RiskReviewRecord
+    if entity_type is DecisionAssemblyRecord:
+        return DecisionAssemblyRecordModel
+    if entity_type is ResearchRun:
+        return ResearchRunRecord
     msg = f"{entity_type.__name__} is not supported by PostgreSQL mapper"
     raise UnsupportedEntityError(msg)
 
@@ -297,10 +710,32 @@ def id_column_for_model(model_type: type[Record]) -> Any:
         return DecisionOutcomeRecord.outcome_id
     if model_type is DecisionEvaluationRecord:
         return DecisionEvaluationRecord.evaluation_id
+    if model_type is ResearchSettlementRecordModel:
+        return ResearchSettlementRecordModel.research_settlement_id
     if model_type is ReviewRecord:
         return ReviewRecord.review_id
     if model_type is LearningRecord:
         return LearningRecord.learning_id
+    if model_type is WatchlistItemRecord:
+        return WatchlistItemRecord.watchlist_item_id
+    if model_type is ResearchSessionRecord:
+        return ResearchSessionRecord.research_session_id
+    if model_type is AgentReportRecord:
+        return AgentReportRecord.report_id
+    if model_type is HypothesisRecord:
+        return HypothesisRecord.hypothesis_id
+    if model_type is DebateRecordModel:
+        return DebateRecordModel.debate_id
+    if model_type is DebateStatementRecord:
+        return DebateStatementRecord.statement_id
+    if model_type is DecisionProposalRecord:
+        return DecisionProposalRecord.proposal_id
+    if model_type is RiskReviewRecord:
+        return RiskReviewRecord.risk_review_id
+    if model_type is DecisionAssemblyRecordModel:
+        return DecisionAssemblyRecordModel.assembly_id
+    if model_type is ResearchRunRecord:
+        return ResearchRunRecord.run_id
     msg = f"{model_type.__name__} is not supported by PostgreSQL mapper"
     raise UnsupportedEntityError(msg)
 

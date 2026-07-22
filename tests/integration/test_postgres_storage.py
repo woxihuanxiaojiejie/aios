@@ -8,17 +8,31 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import IntegrityError
 from tests.factories import (
     fixed_now,
+    make_agent_report,
     make_decision,
     make_evaluation,
     make_evidence,
     make_experiment,
+    make_hypothesis,
     make_learning,
     make_outcome,
+    make_research_session,
     make_review,
+    make_watchlist_item,
 )
 from tests.integration.conftest import alembic_config, table_count
 
+from aios.application.debate import DebateService
+from aios.kernel.debate import DecisionAssemblyRecord
 from aios.kernel.decision import Decision
+from aios.kernel.enums import (
+    AgentReportStatus,
+    AgentRole,
+    HypothesisStatus,
+    ResearchConclusion,
+    ResearchSessionStatus,
+    RiskVerdict,
+)
 from aios.kernel.errors import (
     DuplicateEntityError,
     MissingEntityError,
@@ -27,8 +41,12 @@ from aios.kernel.errors import (
 from aios.kernel.evidence import Evidence
 from aios.kernel.experiment import Experiment
 from aios.kernel.learning import Learning
+from aios.kernel.research import ResearchSession
+from aios.kernel.research_records import AgentReport, Hypothesis
+from aios.kernel.research_run import ResearchRun
 from aios.kernel.review import Review
 from aios.kernel.settlement import DecisionEvaluation, DecisionOutcome
+from aios.kernel.watchlist import WatchlistItem, WatchlistStatus
 from aios.storage.postgres.storage import PostgresStorage
 
 
@@ -205,6 +223,24 @@ def test_migration_upgrade_downgrade_upgrade(postgres_url: str) -> None:
             "llm_generation_records",
             "decision_outcomes",
             "decision_evaluations",
+            "watchlist_items",
+            "research_sessions",
+            "research_session_evidence",
+            "agent_reports",
+            "agent_report_evidence",
+            "hypotheses",
+            "hypothesis_reports",
+            "hypothesis_evidence",
+            "debate_records",
+            "debate_record_reports",
+            "debate_record_hypotheses",
+            "debate_statements",
+            "debate_statement_evidence",
+            "decision_proposals",
+            "decision_proposal_hypotheses",
+            "decision_proposal_evidence",
+            "risk_reviews",
+            "decision_assembly_records",
         } <= set(inspector.get_table_names())
         review_columns = {
             column["name"]: column for column in inspector.get_columns("reviews")
@@ -212,6 +248,18 @@ def test_migration_upgrade_downgrade_upgrade(postgres_url: str) -> None:
         assert review_columns["actual_return"]["nullable"] is True
         assert review_columns["direction_correct"]["nullable"] is True
         assert review_columns["risk_limit_breached"]["nullable"] is True
+        watchlist_indexes = {
+            index["name"]: index for index in inspector.get_indexes("watchlist_items")
+        }
+        assert "uq_watchlist_active_symbol_market" in watchlist_indexes
+        research_indexes = {
+            index["name"]: index for index in inspector.get_indexes("research_sessions")
+        }
+        assert "uq_research_sessions_active_scope" in research_indexes
+        report_indexes = {
+            index["name"]: index for index in inspector.get_indexes("agent_reports")
+        }
+        assert "uq_agent_reports_active_session_role" in report_indexes
     finally:
         engine.dispose()
 
@@ -230,3 +278,269 @@ def test_migration_upgrade_downgrade_upgrade(postgres_url: str) -> None:
         assert "decision_evaluations" in inspector.get_table_names()
     finally:
         engine.dispose()
+
+
+def test_watchlist_storage_filters_and_active_uniqueness(
+    migrated_postgres_url: str,
+) -> None:
+    storage = PostgresStorage(migrated_postgres_url)
+    active = make_watchlist_item(symbol="600519", market="CN")
+    archived = make_watchlist_item(
+        watchlist_item_id="wl_00000000-0000-0000-0000-000000000002",
+        status=WatchlistStatus.ARCHIVED,
+    )
+    hk = make_watchlist_item(
+        watchlist_item_id="wl_00000000-0000-0000-0000-000000000003",
+        symbol="0700",
+        market="HK",
+    )
+
+    storage.save(active)
+    storage.save(archived)
+    storage.save(hk)
+
+    assert storage.get(WatchlistItem, active.watchlist_item_id) == active
+    assert storage.find_active_watchlist_item("CN", "600519") == active
+    assert storage.list_watchlist_items(status=WatchlistStatus.ARCHIVED) == [archived]
+    assert storage.list_watchlist_items(market="HK") == [hk]
+    assert storage.list_watchlist_items(symbol="0700") == [hk]
+
+    duplicate_active = make_watchlist_item(
+        watchlist_item_id="wl_00000000-0000-0000-0000-000000000004",
+        symbol="600519",
+        market="CN",
+    )
+    with pytest.raises(StorageOperationError):
+        storage.save(duplicate_active)
+
+
+def test_research_session_storage_filters_and_active_uniqueness(
+    migrated_postgres_url: str,
+) -> None:
+    storage = PostgresStorage(migrated_postgres_url)
+    evidence = make_evidence(
+        evidence_id="ev_00000000-0000-0000-0000-000000000301",
+    )
+    watchlist = make_watchlist_item(
+        watchlist_item_id="wl_00000000-0000-0000-0000-000000000301",
+    )
+    session = make_research_session(
+        research_session_id="rs_00000000-0000-0000-0000-000000000301",
+        watchlist_item_id=watchlist.watchlist_item_id,
+        evidence_ids=(evidence.evidence_id,),
+    )
+    duplicate_scope = make_research_session(
+        research_session_id="rs_00000000-0000-0000-0000-000000000302",
+        watchlist_item_id=watchlist.watchlist_item_id,
+        evidence_ids=(),
+    )
+
+    storage.save(evidence)
+    storage.save(watchlist)
+    storage.save(session)
+
+    assert storage.get(ResearchSession, session.research_session_id) == session
+    assert (
+        storage.find_active_research_session(
+            watchlist.watchlist_item_id,
+            session.scope.as_of,
+            session.scope.horizon_days,
+        )
+        == session
+    )
+    assert storage.list_research_sessions(
+        watchlist_item_id=watchlist.watchlist_item_id
+    ) == [session]
+    assert storage.list_research_sessions(symbol="600519") == [session]
+    assert storage.list_research_sessions(market="CN") == [session]
+    assert storage.list_research_sessions(horizon_days=3) == [session]
+
+    with pytest.raises(StorageOperationError):
+        storage.save(duplicate_scope)
+
+    cancelled = session.model_copy(
+        update={
+            "status": ResearchSessionStatus.CANCELLED,
+            "cancelled_at": session.scope.as_of + timedelta(minutes=10),
+        },
+    )
+    storage.replace(cancelled)
+    storage.save(duplicate_scope)
+
+    assert (
+        storage.find_active_research_session(
+            watchlist.watchlist_item_id,
+            session.scope.as_of,
+            session.scope.horizon_days,
+        )
+        == duplicate_scope
+    )
+
+
+def test_research_run_storage_round_trip_and_filters(
+    migrated_postgres_url: str,
+) -> None:
+    storage = PostgresStorage(migrated_postgres_url)
+    watchlist = make_watchlist_item(
+        watchlist_item_id="wl_00000000-0000-0000-0000-000000000350",
+    )
+    run = ResearchRun(
+        run_id="run_00000000-0000-0000-0000-000000000350",
+        watchlist_item_id=watchlist.watchlist_item_id,
+        workflow="investment_committee",
+        input_params={
+            "as_of": fixed_now().isoformat(),
+            "horizon_days": 3,
+            "model": "fake",
+            "provider": "fake",
+            "symbol": watchlist.symbol,
+            "workflow": "investment_committee",
+        },
+    )
+
+    storage.save(watchlist)
+    storage.save(run)
+
+    assert storage.get(ResearchRun, run.run_id) == run
+    assert storage.list_research_runs(
+        watchlist_item_id=watchlist.watchlist_item_id
+    ) == [run]
+    assert storage.list_research_runs(status="running") == [run]
+
+
+def test_agent_report_and_hypothesis_storage_filters_and_uniqueness(
+    migrated_postgres_url: str,
+) -> None:
+    storage = PostgresStorage(migrated_postgres_url)
+    evidence = make_evidence(
+        evidence_id="ev_00000000-0000-0000-0000-000000000401",
+    )
+    watchlist = make_watchlist_item(
+        watchlist_item_id="wl_00000000-0000-0000-0000-000000000401",
+    )
+    session = make_research_session(
+        research_session_id="rs_00000000-0000-0000-0000-000000000401",
+        watchlist_item_id=watchlist.watchlist_item_id,
+        evidence_ids=(evidence.evidence_id,),
+    )
+    report = make_agent_report(
+        report_id="ar_00000000-0000-0000-0000-000000000401",
+        research_session_id=session.research_session_id,
+        evidence_ids=(evidence.evidence_id,),
+    )
+    duplicate_report = make_agent_report(
+        report_id="ar_00000000-0000-0000-0000-000000000402",
+        research_session_id=session.research_session_id,
+    )
+    hypothesis = make_hypothesis(
+        hypothesis_id="hp_00000000-0000-0000-0000-000000000401",
+        research_session_id=session.research_session_id,
+        report_ids=(report.report_id,),
+        evidence_ids=(evidence.evidence_id,),
+    )
+
+    for entity in [evidence, watchlist, session, report, hypothesis]:
+        storage.save(entity)
+
+    assert storage.get(AgentReport, report.report_id) == report
+    assert storage.get(Hypothesis, hypothesis.hypothesis_id) == hypothesis
+    assert (
+        storage.find_active_agent_report(
+            session.research_session_id,
+            AgentRole.TECHNICAL,
+        )
+        == report
+    )
+    assert storage.list_agent_reports(
+        research_session_id=session.research_session_id
+    ) == [report]
+    assert storage.list_agent_reports(role=AgentRole.TECHNICAL) == [report]
+    assert storage.list_hypotheses(research_session_id=session.research_session_id) == [
+        hypothesis
+    ]
+    assert storage.list_hypotheses(status=HypothesisStatus.PROPOSED) == [hypothesis]
+
+    with pytest.raises(StorageOperationError):
+        storage.save(duplicate_report)
+
+    archived = report.model_copy(
+        update={
+            "status": AgentReportStatus.ARCHIVED,
+            "archived_at": fixed_now() + timedelta(minutes=10),
+        },
+    )
+    storage.replace(archived)
+    storage.save(duplicate_report)
+
+    assert (
+        storage.find_active_agent_report(
+            session.research_session_id,
+            AgentRole.TECHNICAL,
+        )
+        == duplicate_report
+    )
+
+
+def test_debate_decision_assembly_postgres_round_trip(
+    migrated_postgres_url: str,
+) -> None:
+    storage = PostgresStorage(migrated_postgres_url)
+    evidence = make_evidence(
+        evidence_id="ev_00000000-0000-0000-0000-000000000501",
+    )
+    watchlist = make_watchlist_item(
+        watchlist_item_id="wl_00000000-0000-0000-0000-000000000501",
+    )
+    session = make_research_session(
+        research_session_id="rs_00000000-0000-0000-0000-000000000501",
+        watchlist_item_id=watchlist.watchlist_item_id,
+        evidence_ids=(evidence.evidence_id,),
+    )
+    report = make_agent_report(
+        report_id="ar_00000000-0000-0000-0000-000000000501",
+        research_session_id=session.research_session_id,
+        evidence_ids=(evidence.evidence_id,),
+    )
+    hypothesis = make_hypothesis(
+        hypothesis_id="hp_00000000-0000-0000-0000-000000000501",
+        research_session_id=session.research_session_id,
+        report_ids=(report.report_id,),
+        evidence_ids=(evidence.evidence_id,),
+    )
+    for entity in [evidence, watchlist, session, report, hypothesis]:
+        storage.save(entity)
+
+    service = DebateService(storage)
+    debate = service.create_debate(research_session_id=session.research_session_id)
+    service.add_debate_statement(
+        debate_id=debate.debate_id,
+        agent_report_id=report.report_id,
+        hypothesis_id=hypothesis.hypothesis_id,
+        stance="support",
+        reasoning="supported by report",
+        evidence_ids=[evidence.evidence_id],
+        confidence_before=0.5,
+        confidence_after=0.6,
+    )
+    proposal = service.assemble_decision_proposal(
+        debate_id=debate.debate_id,
+        conclusion=ResearchConclusion.BUY,
+        confidence=0.7,
+        thesis="buy thesis",
+        supporting_hypothesis_ids=[hypothesis.hypothesis_id],
+        rejected_hypothesis_ids=[],
+        evidence_ids=[evidence.evidence_id],
+        risk_notes=["watch size"],
+    )
+    service.submit_risk_review(
+        proposal_id=proposal.proposal_id,
+        verdict=RiskVerdict.DOWNGRADE,
+        final_conclusion=ResearchConclusion.WATCH,
+        final_confidence=0.5,
+        reasons=["risk downgrade"],
+    )
+    assembly = service.finalize_decision(proposal.proposal_id)
+
+    assert isinstance(assembly, DecisionAssemblyRecord)
+    assert storage.get(Decision, assembly.decision_id).action.value == "observe"
+    assert service.finalize_decision(proposal.proposal_id) == assembly

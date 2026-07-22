@@ -7,6 +7,7 @@ from fastapi import Depends, Request
 from aios.adapters.llm import LLMAdapter
 from aios.adapters.market_data import MarketDataAdapter
 from aios.adapters.storage import Storage
+from aios.adapters.vibe_trading import VibeTradingResearchAdapter
 from aios.application.decision_generation import GenerationRecorder
 from aios.workflows.decision_lifecycle import DecisionLifecycleService
 
@@ -31,6 +32,10 @@ def get_generation_recorder(request: Request) -> GenerationRecorder | None:
     return cast("GenerationRecorder | None", request.app.state.generation_recorder)
 
 
+def get_vibe_trading_adapter(request: Request) -> VibeTradingResearchAdapter:
+    return cast("VibeTradingResearchAdapter", request.app.state.vibe_trading_adapter)
+
+
 def get_lifecycle(
     storage: Annotated[Storage, Depends(get_storage)],
 ) -> DecisionLifecycleService:
@@ -50,4 +55,8 @@ LLMAdapterDep = Annotated[LLMAdapter, Depends(get_llm_adapter)]
 GenerationRecorderDep = Annotated[
     GenerationRecorder | None,
     Depends(get_generation_recorder),
+]
+VibeTradingAdapterDep = Annotated[
+    VibeTradingResearchAdapter,
+    Depends(get_vibe_trading_adapter),
 ]

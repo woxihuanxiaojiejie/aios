@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from aios.adapters.llm import LLMAdapter
 from aios.adapters.market_data import MarketDataAdapter
 from aios.adapters.storage import Storage
+from aios.adapters.vibe_trading import VibeTradingResearchAdapter
 from aios.api.errors import add_exception_handlers
 from aios.api.routes import (
     decision_generation,
@@ -27,6 +28,7 @@ from aios.integrations.baostock.adapter import BaoStockMarketDataAdapter
 from aios.integrations.litellm.adapter import LiteLLMAdapter
 from aios.storage.postgres import PostgresStorage
 from aios.storage.postgres.generation_records import LLMGenerationRecordStore
+from aios.vibe_trading.adapter import VibeTradingAdapter
 
 
 def create_app(
@@ -35,6 +37,7 @@ def create_app(
     baostock_market_data_adapter: MarketDataAdapter | None = None,
     llm_adapter: LLMAdapter | None = None,
     generation_recorder: GenerationRecorder | None = None,
+    vibe_trading_adapter: VibeTradingResearchAdapter | None = None,
 ) -> FastAPI:
     load_dotenv(override=True)
     app = FastAPI(title="AIOS", version="0.1.0")
@@ -55,6 +58,7 @@ def create_app(
     app.state.generation_recorder = generation_recorder or _generation_recorder(
         resolved_storage
     )
+    app.state.vibe_trading_adapter = vibe_trading_adapter or VibeTradingAdapter()
     add_exception_handlers(app)
 
     app.include_router(health.router)

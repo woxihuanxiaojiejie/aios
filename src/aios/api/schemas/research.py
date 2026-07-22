@@ -10,6 +10,7 @@ from aios.api.schemas.decision import DecisionResponse
 from aios.api.schemas.decision_generation import GenerationMetadataResponse
 from aios.api.schemas.evidence import EvidenceResponse
 from aios.api.schemas.experiment import ExperimentResponse
+from aios.api.schemas.learning import LearningResponse, learning_response
 from aios.api.schemas.market_data import MarketBarResponse
 from aios.api.schemas.review import ReviewResponse
 from aios.kernel.enums import (
@@ -19,7 +20,12 @@ from aios.kernel.enums import (
     ReturnResult,
     RiskResult,
 )
-from aios.kernel.settlement import DecisionEvaluation, DecisionOutcome
+from aios.kernel.learning import Learning
+from aios.kernel.settlement import (
+    DecisionEvaluation,
+    DecisionOutcome,
+    ResearchSettlementRecord,
+)
 
 
 class ResearchMarketResponse(ApiSchema):
@@ -118,6 +124,33 @@ class ResearchSettlementResponse(ApiSchema):
     review: ReviewResponse
 
 
+class ResearchSettlementRecordResponse(ApiSchema):
+    research_settlement_id: str
+    assembly_id: str
+    research_session_id: str
+    debate_id: str
+    proposal_id: str
+    risk_review_id: str
+    decision_id: str
+    outcome_id: str
+    evaluation_id: str
+    review_id: str
+    learning_ids: list[str]
+    evidence_ids: list[str]
+    report_ids: list[str]
+    hypothesis_ids: list[str]
+    settled_at: datetime
+    created_at: datetime
+
+
+class ResearchAssemblySettlementResponse(ApiSchema):
+    record: ResearchSettlementRecordResponse
+    outcome: DecisionOutcomeResponse
+    evaluation: DecisionEvaluationResponse
+    review: ReviewResponse
+    learnings: list[LearningResponse]
+
+
 class ResearchHistoryRow(ApiSchema):
     time: datetime
     type: str
@@ -150,3 +183,43 @@ def decision_evaluation_response(
     evaluation: DecisionEvaluation,
 ) -> DecisionEvaluationResponse:
     return DecisionEvaluationResponse.model_validate(evaluation.model_dump())
+
+
+def research_settlement_record_response(
+    record: ResearchSettlementRecord,
+) -> ResearchSettlementRecordResponse:
+    return ResearchSettlementRecordResponse(
+        research_settlement_id=record.research_settlement_id,
+        assembly_id=record.assembly_id,
+        research_session_id=record.research_session_id,
+        debate_id=record.debate_id,
+        proposal_id=record.proposal_id,
+        risk_review_id=record.risk_review_id,
+        decision_id=record.decision_id,
+        outcome_id=record.outcome_id,
+        evaluation_id=record.evaluation_id,
+        review_id=record.review_id,
+        learning_ids=list(record.learning_ids),
+        evidence_ids=list(record.evidence_ids),
+        report_ids=list(record.report_ids),
+        hypothesis_ids=list(record.hypothesis_ids),
+        settled_at=record.settled_at,
+        created_at=record.created_at,
+    )
+
+
+def research_assembly_settlement_response(
+    *,
+    record: ResearchSettlementRecord,
+    outcome: DecisionOutcome,
+    evaluation: DecisionEvaluation,
+    review: ReviewResponse,
+    learnings: tuple[Learning, ...],
+) -> ResearchAssemblySettlementResponse:
+    return ResearchAssemblySettlementResponse(
+        record=research_settlement_record_response(record),
+        outcome=decision_outcome_response(outcome),
+        evaluation=decision_evaluation_response(evaluation),
+        review=review,
+        learnings=[learning_response(learning) for learning in learnings],
+    )

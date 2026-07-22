@@ -72,3 +72,61 @@ class ApprovalStatus(StrEnum):
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
+
+
+class WatchlistStatus(StrEnum):
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+
+
+class ResearchSessionStatus(StrEnum):
+    CREATED = "created"
+    EVIDENCE_READY = "evidence_ready"
+    CANCELLED = "cancelled"
+
+
+class AgentRole(StrEnum):
+    TECHNICAL = "technical"
+    FUNDAMENTAL = "fundamental"
+    NEWS = "news"
+    SENTIMENT = "sentiment"
+    CAPITAL_FLOW = "capital_flow"
+
+
+class AgentReportStatus(StrEnum):
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+
+
+class HypothesisStatus(StrEnum):
+    PROPOSED = "proposed"
+    VALIDATED = "validated"
+    REJECTED = "rejected"
+    INVALIDATED = "invalidated"
+
+
+class DebateStatus(StrEnum):
+    OPEN = "open"
+    ASSEMBLED = "assembled"
+    CANCELLED = "cancelled"
+
+
+class DebateStance(StrEnum):
+    SUPPORT = "support"
+    OPPOSE = "oppose"
+    NEUTRAL = "neutral"
+
+
+class ResearchConclusion(StrEnum):
+    BUY = "buy"
+    SELL = "sell"
+    HOLD = "hold"
+    WATCH = "watch"
+    NO_TRADE = "no_trade"
+    INVALID = "invalid"
+
+
+class RiskVerdict(StrEnum):
+    APPROVE = "approve"
+    DOWNGRADE = "downgrade"
+    VETO = "veto"

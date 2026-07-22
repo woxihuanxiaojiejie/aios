@@ -10,12 +10,14 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Index,
+    Integer,
     Numeric,
     String,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
@@ -245,6 +247,72 @@ class DecisionEvaluationRecord(Base):
     )
 
 
+class ResearchSettlementRecordModel(Base):
+    __tablename__ = "research_settlement_records"
+    __table_args__ = (
+        UniqueConstraint("assembly_id", name="uq_research_settlements_assembly_id"),
+        Index("ix_research_settlements_research_session_id", "research_session_id"),
+        Index("ix_research_settlements_decision_id", "decision_id"),
+    )
+
+    research_settlement_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    assembly_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("decision_assembly_records.assembly_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    research_session_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("research_sessions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    debate_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("debate_records.debate_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    proposal_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("decision_proposals.proposal_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    risk_review_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("risk_reviews.risk_review_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    decision_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("decisions.decision_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    outcome_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("decision_outcomes.outcome_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    evaluation_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("decision_evaluations.evaluation_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    review_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("reviews.review_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    learning_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    evidence_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    report_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    hypothesis_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    settled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
 class ReviewRecord(Base):
     __tablename__ = "reviews"
     __table_args__ = (Index("ix_reviews_outcome", "outcome"),)
@@ -289,5 +357,555 @@ class LearningRecord(Base):
     reason: Mapped[str] = mapped_column(String, nullable=False)
     approval_status: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class WatchlistItemRecord(Base):
+    __tablename__ = "watchlist_items"
+    __table_args__ = (
+        CheckConstraint("status in ('active', 'archived')", "ck_watchlist_status"),
+        CheckConstraint(
+            "(status = 'active' and archived_at is null) or "
+            "(status = 'archived' and archived_at is not null)",
+            "ck_watchlist_archived_at",
+        ),
+        CheckConstraint(
+            "updated_at >= created_at",
+            "ck_watchlist_updated_at",
+        ),
+        Index("ix_watchlist_items_status", "status"),
+        Index("ix_watchlist_items_market_symbol", "market", "symbol"),
+        Index(
+            "uq_watchlist_active_symbol_market",
+            "market",
+            "symbol",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+        ),
+    )
+
+    watchlist_item_id: Mapped[str] = mapped_column("id", String(64), primary_key=True)
+    symbol: Mapped[str] = mapped_column(String(64), nullable=False)
+    market: Mapped[str] = mapped_column(String(64), nullable=False)
+    note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ResearchSessionRecord(Base):
+    __tablename__ = "research_sessions"
+    __table_args__ = (
+        CheckConstraint(
+            "horizon_days in (1, 3, 7)",
+            "ck_research_sessions_horizon",
+        ),
+        CheckConstraint(
+            "status in ('created', 'evidence_ready', 'cancelled')",
+            "ck_research_sessions_status",
+        ),
+        CheckConstraint(
+            "valid_until > as_of",
+            "ck_research_sessions_valid_until",
+        ),
+        CheckConstraint(
+            "(status = 'cancelled' and cancelled_at is not null) or "
+            "(status <> 'cancelled' and cancelled_at is null)",
+            "ck_research_sessions_cancelled_at",
+        ),
+        CheckConstraint(
+            "updated_at >= created_at",
+            "ck_research_sessions_updated_at",
+        ),
+        Index("ix_research_sessions_watchlist_item_id", "watchlist_item_id"),
+        Index("ix_research_sessions_symbol", "symbol"),
+        Index("ix_research_sessions_market", "market"),
+        Index("ix_research_sessions_status", "status"),
+        Index(
+            "uq_research_sessions_active_scope",
+            "watchlist_item_id",
+            "as_of",
+            "horizon_days",
+            unique=True,
+            postgresql_where=text("status <> 'cancelled'"),
+        ),
+    )
+
+    research_session_id: Mapped[str] = mapped_column("id", String(64), primary_key=True)
+    watchlist_item_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("watchlist_items.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    symbol: Mapped[str] = mapped_column(String(64), nullable=False)
+    market: Mapped[str] = mapped_column(String(64), nullable=False)
+    watchlist_note_snapshot: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+    )
+    horizon_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    valid_until: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    experiment_id: Mapped[str | None] = mapped_column(
+        String(64),
+        ForeignKey("experiments.experiment_id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    evidence_links: Mapped[list[ResearchSessionEvidenceRecord]] = relationship(
+        back_populates="session",
+        cascade="all, delete-orphan",
+        order_by="ResearchSessionEvidenceRecord.position",
+    )
+
+
+class ResearchSessionEvidenceRecord(Base):
+    __tablename__ = "research_session_evidence"
+    __table_args__ = (
+        UniqueConstraint(
+            "research_session_id",
+            "position",
+            name="uq_research_session_evidence_position",
+        ),
+    )
+
+    research_session_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("research_sessions.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    evidence_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("evidence.evidence_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    session: Mapped[ResearchSessionRecord] = relationship(
+        back_populates="evidence_links"
+    )
+
+
+class AgentReportRecord(Base):
+    __tablename__ = "agent_reports"
+    __table_args__ = (
+        CheckConstraint(
+            "role in ('technical', 'fundamental', 'news', 'sentiment', 'capital_flow')",
+            "ck_agent_reports_role",
+        ),
+        CheckConstraint("status in ('active', 'archived')", "ck_agent_reports_status"),
+        CheckConstraint(
+            "confidence >= 0 and confidence <= 1",
+            "ck_agent_reports_confidence",
+        ),
+        CheckConstraint(
+            "(status = 'active' and archived_at is null) or "
+            "(status = 'archived' and archived_at is not null)",
+            "ck_agent_reports_archived_at",
+        ),
+        CheckConstraint("updated_at >= created_at", "ck_agent_reports_updated_at"),
+        Index("ix_agent_reports_research_session_id", "research_session_id"),
+        Index("ix_agent_reports_role", "role"),
+        Index("ix_agent_reports_status", "status"),
+        Index(
+            "uq_agent_reports_active_session_role",
+            "research_session_id",
+            "role",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+        ),
+    )
+
+    report_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    research_session_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("research_sessions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    role: Mapped[str] = mapped_column(String(64), nullable=False)
+    summary: Mapped[str] = mapped_column(String, nullable=False)
+    stance: Mapped[str] = mapped_column(String(255), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    source: Mapped[str] = mapped_column(String(64), nullable=False)
+    raw_reference: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    evidence_links: Mapped[list[AgentReportEvidenceRecord]] = relationship(
+        back_populates="report",
+        cascade="all, delete-orphan",
+        order_by="AgentReportEvidenceRecord.position",
+    )
+
+
+class AgentReportEvidenceRecord(Base):
+    __tablename__ = "agent_report_evidence"
+    __table_args__ = (
+        UniqueConstraint(
+            "report_id",
+            "position",
+            name="uq_agent_report_evidence_position",
+        ),
+    )
+
+    report_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("agent_reports.report_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    evidence_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("evidence.evidence_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    report: Mapped[AgentReportRecord] = relationship(back_populates="evidence_links")
+
+
+class HypothesisRecord(Base):
+    __tablename__ = "hypotheses"
+    __table_args__ = (
+        CheckConstraint(
+            "status in ('proposed', 'validated', 'rejected', 'invalidated')",
+            "ck_hypotheses_status",
+        ),
+        CheckConstraint(
+            "confidence >= 0 and confidence <= 1",
+            "ck_hypotheses_confidence",
+        ),
+        CheckConstraint("horizon_days in (1, 3, 7)", "ck_hypotheses_horizon"),
+        CheckConstraint("updated_at >= created_at", "ck_hypotheses_updated_at"),
+        Index("ix_hypotheses_research_session_id", "research_session_id"),
+        Index("ix_hypotheses_status", "status"),
+    )
+
+    hypothesis_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    research_session_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("research_sessions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    statement: Mapped[str] = mapped_column(String, nullable=False)
+    rationale: Mapped[str] = mapped_column(String, nullable=False)
+    direction: Mapped[str] = mapped_column(String(64), nullable=False)
+    horizon_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    report_links: Mapped[list[HypothesisReportRecord]] = relationship(
+        back_populates="hypothesis",
+        cascade="all, delete-orphan",
+        order_by="HypothesisReportRecord.position",
+    )
+    evidence_links: Mapped[list[HypothesisEvidenceRecord]] = relationship(
+        back_populates="hypothesis",
+        cascade="all, delete-orphan",
+        order_by="HypothesisEvidenceRecord.position",
+    )
+
+
+class HypothesisReportRecord(Base):
+    __tablename__ = "hypothesis_reports"
+    __table_args__ = (
+        UniqueConstraint(
+            "hypothesis_id",
+            "position",
+            name="uq_hypothesis_reports_position",
+        ),
+    )
+
+    hypothesis_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("hypotheses.hypothesis_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    report_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("agent_reports.report_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    hypothesis: Mapped[HypothesisRecord] = relationship(back_populates="report_links")
+
+
+class HypothesisEvidenceRecord(Base):
+    __tablename__ = "hypothesis_evidence"
+    __table_args__ = (
+        UniqueConstraint(
+            "hypothesis_id",
+            "position",
+            name="uq_hypothesis_evidence_position",
+        ),
+    )
+
+    hypothesis_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("hypotheses.hypothesis_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    evidence_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("evidence.evidence_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    hypothesis: Mapped[HypothesisRecord] = relationship(back_populates="evidence_links")
+
+
+class DebateRecordModel(Base):
+    __tablename__ = "debate_records"
+    __table_args__ = (
+        CheckConstraint(
+            "status in ('open', 'assembled', 'cancelled')",
+            "ck_debate_records_status",
+        ),
+        CheckConstraint("updated_at >= created_at", "ck_debate_records_updated_at"),
+        Index("ix_debate_records_research_session_id", "research_session_id"),
+    )
+
+    debate_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    research_session_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("research_sessions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    report_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    hypothesis_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    final_decision_id: Mapped[str | None] = mapped_column(
+        String(64),
+        ForeignKey("decisions.decision_id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class DebateStatementRecord(Base):
+    __tablename__ = "debate_statements"
+    __table_args__ = (
+        CheckConstraint(
+            "stance in ('support', 'oppose', 'neutral')",
+            "ck_debate_statements_stance",
+        ),
+        CheckConstraint(
+            "confidence_before >= 0 and confidence_before <= 1",
+            "ck_debate_statements_confidence_before",
+        ),
+        CheckConstraint(
+            "confidence_after >= 0 and confidence_after <= 1",
+            "ck_debate_statements_confidence_after",
+        ),
+        UniqueConstraint(
+            "debate_id",
+            "agent_report_id",
+            "hypothesis_id",
+            name="uq_debate_statement_pair",
+        ),
+        Index("ix_debate_statements_debate_id", "debate_id"),
+    )
+
+    statement_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    debate_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("debate_records.debate_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    agent_report_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("agent_reports.report_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    hypothesis_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("hypotheses.hypothesis_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    stance: Mapped[str] = mapped_column(String(32), nullable=False)
+    reasoning: Mapped[str] = mapped_column(String, nullable=False)
+    evidence_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    confidence_before: Mapped[float] = mapped_column(Float, nullable=False)
+    confidence_after: Mapped[float] = mapped_column(Float, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class DecisionProposalRecord(Base):
+    __tablename__ = "decision_proposals"
+    __table_args__ = (
+        CheckConstraint(
+            "conclusion in ('buy', 'sell', 'hold', 'watch', 'no_trade', 'invalid')",
+            "ck_decision_proposals_conclusion",
+        ),
+        CheckConstraint(
+            "confidence >= 0 and confidence <= 1",
+            "ck_decision_proposals_confidence",
+        ),
+        UniqueConstraint("debate_id", name="uq_decision_proposals_debate_id"),
+        Index("ix_decision_proposals_debate_id", "debate_id"),
+    )
+
+    proposal_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    debate_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("debate_records.debate_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    conclusion: Mapped[str] = mapped_column(String(32), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    thesis: Mapped[str] = mapped_column(String, nullable=False)
+    supporting_hypothesis_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    rejected_hypothesis_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    evidence_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    risk_notes: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class RiskReviewRecord(Base):
+    __tablename__ = "risk_reviews"
+    __table_args__ = (
+        CheckConstraint(
+            "verdict in ('approve', 'downgrade', 'veto')",
+            "ck_risk_reviews_verdict",
+        ),
+        CheckConstraint(
+            "final_conclusion in "
+            "('buy', 'sell', 'hold', 'watch', 'no_trade', 'invalid')",
+            "ck_risk_reviews_final_conclusion",
+        ),
+        CheckConstraint(
+            "final_confidence >= 0 and final_confidence <= 1",
+            "ck_risk_reviews_final_confidence",
+        ),
+        UniqueConstraint("proposal_id", name="uq_risk_reviews_proposal_id"),
+    )
+
+    risk_review_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    proposal_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("decision_proposals.proposal_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    verdict: Mapped[str] = mapped_column(String(32), nullable=False)
+    final_conclusion: Mapped[str] = mapped_column(String(32), nullable=False)
+    final_confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    reasons: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class DecisionAssemblyRecordModel(Base):
+    __tablename__ = "decision_assembly_records"
+    __table_args__ = (
+        CheckConstraint(
+            "conclusion in ('buy', 'sell', 'hold', 'watch', 'no_trade', 'invalid')",
+            "ck_decision_assembly_conclusion",
+        ),
+        UniqueConstraint("proposal_id", name="uq_decision_assembly_proposal_id"),
+        UniqueConstraint("debate_id", name="uq_decision_assembly_debate_id"),
+        UniqueConstraint("decision_id", name="uq_decision_assembly_decision_id"),
+    )
+
+    assembly_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    research_session_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    debate_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("debate_records.debate_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    proposal_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("decision_proposals.proposal_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    risk_review_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("risk_reviews.risk_review_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    decision_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("decisions.decision_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    conclusion: Mapped[str] = mapped_column(String(32), nullable=False)
+    report_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    hypothesis_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    evidence_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class ResearchRunRecord(Base):
+    __tablename__ = "research_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status in ('running', 'completed', 'failed')",
+            "ck_research_runs_status",
+        ),
+        Index("ix_research_runs_watchlist_item_id", "watchlist_item_id"),
+        Index("ix_research_runs_research_session_id", "research_session_id"),
+        UniqueConstraint(
+            "watchlist_item_id",
+            "workflow",
+            "input_params",
+            name="uq_research_runs_idempotency",
+        ),
+    )
+
+    run_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    research_session_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    watchlist_item_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("watchlist_items.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    current_stage: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    vibe_run_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    workflow: Mapped[str] = mapped_column(String(128), nullable=False)
+    input_params: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    raw_output_reference: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    error: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )

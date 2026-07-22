@@ -109,3 +109,37 @@ class DecisionEvaluation(KernelModel):
     @classmethod
     def validate_datetime(cls, value: datetime) -> datetime:
         return ensure_utc(value)
+
+
+class ResearchSettlementRecord(KernelModel):
+    id_field: ClassVar[str] = "research_settlement_id"
+
+    research_settlement_id: str = Field(default_factory=lambda: new_id("sr_"))
+    assembly_id: str = Field(min_length=1)
+    research_session_id: str = Field(min_length=1)
+    debate_id: str = Field(min_length=1)
+    proposal_id: str = Field(min_length=1)
+    risk_review_id: str = Field(min_length=1)
+    decision_id: str = Field(min_length=1)
+    outcome_id: str = Field(min_length=1)
+    evaluation_id: str = Field(min_length=1)
+    review_id: str = Field(min_length=1)
+    learning_ids: tuple[str, ...] = ()
+    evidence_ids: tuple[str, ...]
+    report_ids: tuple[str, ...]
+    hypothesis_ids: tuple[str, ...]
+    settled_at: datetime
+    created_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("learning_ids", "evidence_ids", "report_ids", "hypothesis_ids")
+    @classmethod
+    def validate_unique_ids(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if len(value) != len(set(value)):
+            msg = "duplicate IDs are not allowed"
+            raise ValueError(msg)
+        return value
+
+    @field_validator("settled_at", "created_at")
+    @classmethod
+    def validate_record_datetime(cls, value: datetime) -> datetime:
+        return ensure_utc(value)

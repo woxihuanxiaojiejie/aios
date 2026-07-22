@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -60,6 +61,8 @@ class DecisionSettlementService:
         adjustment: Adjustment = Adjustment.NONE,
         evaluation_rules_version: str = DECISION_EVALUATION_V1,
         llm_adapter: object | None = None,
+        review_builder: Callable[[DecisionOutcome, DecisionEvaluation], Review]
+        | None = None,
     ) -> None:
         if not evaluation_rules_version:
             msg = "evaluation_rules_version must not be empty"
@@ -69,6 +72,7 @@ class DecisionSettlementService:
         self._adjustment = adjustment
         self._evaluation_rules_version = evaluation_rules_version
         self._llm_adapter = llm_adapter
+        self._review_builder = review_builder or self.review_from_settlement
 
     def settle(
         self,
@@ -137,7 +141,7 @@ class DecisionSettlementService:
         outcome: DecisionOutcome,
         evaluation: DecisionEvaluation,
     ) -> Review:
-        expected = self.review_from_settlement(outcome, evaluation)
+        expected = self._review_builder(outcome, evaluation)
         existing = self._lifecycle.get_review_by_decision_id(expected.decision_id)
         if existing is not None:
             self._ensure_review_consistent(existing, expected)
