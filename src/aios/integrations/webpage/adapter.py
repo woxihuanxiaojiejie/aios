@@ -6,12 +6,11 @@ import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 
 import trafilatura
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from aios.integrations.http_client import HTTPClientConfig, RequestsHTTPClient
 from aios.integrations.http_retry import RetryingHTTPFetcher
 
 
@@ -29,7 +28,14 @@ class WebpageHTTPClient(Protocol):
 
 
 class UrllibWebpageHTTPClient:
-    def __init__(self, attempts: int = 3, wait_seconds: float = 1.0) -> None:
+    def __init__(
+        self,
+        attempts: int = 3,
+        wait_seconds: float = 1.0,
+        http_config: HTTPClientConfig | None = None,
+    ) -> None:
+        self._client = RequestsHTTPClient(config=http_config)
+        self.last_from_cache: bool | None = None
         self._fetcher = RetryingHTTPFetcher(
             self._fetch_once,
             attempts=attempts,
@@ -38,21 +44,18 @@ class UrllibWebpageHTTPClient:
 
     def fetch(self, url: str) -> bytes:
         try:
-            return self._fetcher.fetch(url)
+            body = self._fetcher.fetch(url)
+            self.last_from_cache = self._client.last_from_cache
+            return body
         except OSError as exc:
             msg = f"Webpage request failed for {url}"
             raise TrafilaturaFetchError(msg) from exc
 
     def _fetch_once(self, url: str) -> bytes:
-        request = Request(url, headers={"User-Agent": "aios-brain001/0.1"})
         try:
-            with urlopen(request, timeout=30) as response:
-                body = response.read()
-        except (HTTPError, URLError, TimeoutError, OSError) as exc:
+            body = self._client.fetch(url)
+        except Exception as exc:
             raise OSError(str(exc)) from exc
-        if not isinstance(body, bytes):
-            msg = f"Webpage response was not bytes for {url}"
-            raise TrafilaturaFetchError(msg)
         return body
 
 
@@ -65,6 +68,7 @@ class WebpageExtractionResult(BaseModel):
     title: str
     published_at: datetime | None = None
     fetched_at: datetime
+    response_from_cache: bool | None = None
     extracted_text: str = Field(min_length=1)
     extracted_metadata: dict[str, Any]
     raw_response_path: Path | None = None
@@ -193,6 +197,7 @@ class TrafilaturaWebpageAdapter:
             title=str(payload.get("title") or ""),
             published_at=_published_at(payload),
             fetched_at=fetched_at,
+            response_from_cache=_response_from_cache(self._http_client),
             extracted_text=text,
             extracted_metadata=payload,
             raw_response_path=raw_path,
@@ -260,3 +265,10 @@ def _artifact_suffix(source_id: str, page_url: str, fetched_at: datetime) -> str
     digest = hashlib.sha256(page_url.encode("utf-8")).hexdigest()[:12]
     timestamp = fetched_at.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
     return f"{safe_source}-{timestamp}-{digest}"
+
+
+def _response_from_cache(client: WebpageHTTPClient) -> bool | None:
+    value = getattr(client, "last_from_cache", None)
+    if isinstance(value, bool):
+        return value
+    return None

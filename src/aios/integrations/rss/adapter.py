@@ -8,12 +8,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from time import struct_time
 from typing import Any, Protocol
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 
 import feedparser  # type: ignore[import-untyped]
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from aios.integrations.http_client import HTTPClientConfig, RequestsHTTPClient
 from aios.integrations.http_retry import RetryingHTTPFetcher
 
 
@@ -31,7 +30,14 @@ class RSSHTTPClient(Protocol):
 
 
 class UrllibRSSHTTPClient:
-    def __init__(self, attempts: int = 3, wait_seconds: float = 1.0) -> None:
+    def __init__(
+        self,
+        attempts: int = 3,
+        wait_seconds: float = 1.0,
+        http_config: HTTPClientConfig | None = None,
+    ) -> None:
+        self._client = RequestsHTTPClient(config=http_config)
+        self.last_from_cache: bool | None = None
         self._fetcher = RetryingHTTPFetcher(
             self._fetch_once,
             attempts=attempts,
@@ -40,21 +46,18 @@ class UrllibRSSHTTPClient:
 
     def fetch(self, url: str) -> bytes:
         try:
-            return self._fetcher.fetch(url)
+            body = self._fetcher.fetch(url)
+            self.last_from_cache = self._client.last_from_cache
+            return body
         except OSError as exc:
             msg = f"RSS feed request failed for {url}"
             raise RSSFeedFetchError(msg) from exc
 
     def _fetch_once(self, url: str) -> bytes:
-        request = Request(url, headers={"User-Agent": "aios-brain001/0.1"})
         try:
-            with urlopen(request, timeout=30) as response:
-                body = response.read()
-        except (HTTPError, URLError, TimeoutError, OSError) as exc:
+            body = self._client.fetch(url)
+        except Exception as exc:
             raise OSError(str(exc)) from exc
-        if not isinstance(body, bytes):
-            msg = f"RSS feed response was not bytes for {url}"
-            raise RSSFeedFetchError(msg)
         return body
 
 
@@ -91,6 +94,7 @@ class RSSFeedResult(BaseModel):
     feed_url: str = Field(min_length=1)
     feed_title: str
     fetched_at: datetime
+    response_from_cache: bool | None = None
     raw_response_path: Path | None = None
     pre_normalized_path: Path | None = None
     items: tuple[RSSNewsItem, ...]
@@ -212,6 +216,7 @@ class FeedparserRSSAdapter:
             feed_url=feed_url,
             feed_title=feed_title,
             fetched_at=fetched_at,
+            response_from_cache=_response_from_cache(self._http_client),
             raw_response_path=raw_path,
             pre_normalized_path=pre_normalized_path,
             items=items,
@@ -323,3 +328,10 @@ def _artifact_suffix(source_id: str, feed_url: str, fetched_at: datetime) -> str
     digest = hashlib.sha256(feed_url.encode("utf-8")).hexdigest()[:12]
     timestamp = fetched_at.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
     return f"{safe_source}-{timestamp}-{digest}"
+
+
+def _response_from_cache(client: RSSHTTPClient) -> bool | None:
+    value = getattr(client, "last_from_cache", None)
+    if isinstance(value, bool):
+        return value
+    return None

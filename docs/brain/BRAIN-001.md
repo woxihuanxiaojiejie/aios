@@ -123,3 +123,17 @@ handling, and source trace fields.
   can record per-source failures.
 - Source trace: preserved by the calling source adapter; retry does not mutate
   provider metadata.
+
+### Current Component: HTTP Cache via requests-cache
+
+- Install: runtime dependency `requests-cache>=1.2,<2`.
+- Configuration: `HTTPClientConfig(cache_enabled=..., cache_name=..., expire_after_seconds=...)`.
+- Default expiration: `DEFAULT_CACHE_EXPIRE_SECONDS` in the HTTP runtime layer.
+- Runtime files: default SQLite cache path under `runtime/brain001/`, ignored by Git.
+- Minimal entry: `RequestsHTTPClient(config=...).fetch_response(url)`.
+- Real-data test: RSS and webpage smoke each fetch twice with cache enabled and
+  assert the second response reports `from_cache=True`.
+- Failure handling: cache session setup failure falls back to uncached
+  `requests.Session`.
+- Source trace: RSS/webpage result exposes `response_from_cache`; raw artifact
+  saving remains unchanged.
