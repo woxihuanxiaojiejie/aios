@@ -58,6 +58,45 @@ class EvidenceRecord(Base):
     )
 
 
+class BrainEvidenceRecord(Base):
+    __tablename__ = "brain_evidence"
+    __table_args__ = (
+        CheckConstraint(
+            "available_at >= collected_at", "ck_brain_evidence_available_at"
+        ),
+        Index("ix_brain_evidence_fingerprint", "fingerprint"),
+        Index("ix_brain_evidence_source", "source"),
+        Index("ix_brain_evidence_source_type", "source_type"),
+        Index("ix_brain_evidence_published_at", "published_at"),
+        Index("ix_brain_evidence_collected_at", "collected_at"),
+        Index("ix_brain_evidence_available_at", "available_at"),
+    )
+
+    evidence_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    source: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_identifier: Mapped[str | None] = mapped_column(String(1024))
+    source_url: Mapped[str | None] = mapped_column(String(2048))
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    summary: Mapped[str | None] = mapped_column(String)
+    content: Mapped[str] = mapped_column(String, nullable=False)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    collected_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    raw_artifact_path: Mapped[str] = mapped_column(String(2048), nullable=False)
+    provider_record_json: Mapped[dict[str, Any]] = mapped_column(
+        "provider_record", JSONB, nullable=False
+    )
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSONB, nullable=False
+    )
+
+
 class ExperimentRecord(Base):
     __tablename__ = "experiments"
     __table_args__ = (

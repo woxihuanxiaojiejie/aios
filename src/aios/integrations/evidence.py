@@ -14,6 +14,13 @@ from aios.integrations.provider_records import (
     WebpageIntakeRecord,
 )
 
+type ProviderRecord = (
+    RSSIntakeRecord
+    | WebpageIntakeRecord
+    | AnnouncementIntakeRecord
+    | ProviderIntakeRecord
+)
+
 
 class Evidence(BaseModel):
     """Unified, traceable evidence produced from a validated provider record."""
@@ -35,7 +42,7 @@ class Evidence(BaseModel):
     available_at: datetime
     fingerprint: str = Field(min_length=64, max_length=64)
     raw_artifact_path: Path
-    provider_record: ProviderIntakeRecord
+    provider_record: ProviderRecord
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("published_at", "collected_at", "available_at")
