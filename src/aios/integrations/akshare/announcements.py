@@ -7,10 +7,11 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from aios.integrations.akshare.client import AKShareClient
 from aios.integrations.fingerprint import content_fingerprint
+from aios.integrations.provider_records import AnnouncementIntakeRecord
 
 SOURCE_FUNCTION = "stock_zh_a_disclosure_report_cninfo"
 
@@ -65,6 +66,7 @@ class AKShareAnnouncementsResult(BaseModel):
     fetched_at: datetime
     raw_response_path: Path | None = None
     pre_normalized_path: Path | None = None
+    intake_records: tuple[AnnouncementIntakeRecord, ...] = ()
     items: tuple[AKShareAnnouncementItem, ...]
 
     @field_validator("fetched_at")
@@ -130,6 +132,14 @@ class AKShareAnnouncementsAdapter:
             fetched_at=collected_at,
             persist_dir=persist_dir,
         )
+        items = tuple(_row_to_item(row, collected_at=collected_at) for row in rows)
+        try:
+            intake_records = tuple(
+                _item_to_intake_record(item, raw_path=raw_path) for item in items
+            )
+        except ValidationError as exc:
+            msg = f"invalid AKShare announcement intake record for {symbol}"
+            raise ValueError(msg) from exc
         return AKShareAnnouncementsResult(
             symbol=symbol,
             market=market,
@@ -139,7 +149,8 @@ class AKShareAnnouncementsAdapter:
             fetched_at=collected_at,
             raw_response_path=raw_path,
             pre_normalized_path=pre_normalized_path,
-            items=tuple(_row_to_item(row, collected_at=collected_at) for row in rows),
+            intake_records=intake_records,
+            items=items,
         )
 
     def fetch_many_cninfo_disclosures(
@@ -258,6 +269,26 @@ def _row_to_item(
             "announcement_url": url,
             "announcement_time": row.get("公告时间"),
         },
+    )
+
+
+def _item_to_intake_record(
+    item: AKShareAnnouncementItem,
+    *,
+    raw_path: Path | None,
+) -> AnnouncementIntakeRecord:
+    return AnnouncementIntakeRecord(
+        source="akshare",
+        source_type="announcement",
+        source_url=item.url,
+        source_identifier=item.symbol,
+        published_at=item.published_at,
+        collected_at=item.collected_at,
+        raw_artifact_path=raw_path or Path(""),
+        title=item.title,
+        summary=None,
+        content=item.title,
+        fingerprint=item.fingerprint,
     )
 
 

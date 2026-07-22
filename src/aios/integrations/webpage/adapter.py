@@ -8,12 +8,13 @@ from pathlib import Path
 from typing import Any, Protocol
 
 import trafilatura
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from aios.integrations.fingerprint import content_fingerprint
 from aios.integrations.http_client import HTTPClientConfig, RequestsHTTPClient
 from aios.integrations.http_rate_limit import ProviderRateLimiter
 from aios.integrations.http_retry import RetryingHTTPFetcher
+from aios.integrations.provider_records import WebpageIntakeRecord
 
 
 class TrafilaturaFetchError(Exception):
@@ -80,6 +81,7 @@ class WebpageExtractionResult(BaseModel):
     extracted_metadata: dict[str, Any]
     raw_response_path: Path | None = None
     pre_normalized_path: Path | None = None
+    intake_record: WebpageIntakeRecord | None = None
     source_trace: dict[str, Any]
 
     @field_validator("published_at", "fetched_at")
@@ -198,18 +200,38 @@ class TrafilaturaWebpageAdapter:
             fetched_at=fetched_at,
             persist_dir=persist_dir,
         )
+        fingerprint = content_fingerprint(text)
+        published_at = _published_at(payload)
+        title = str(payload.get("title") or "")
+        try:
+            intake_record = WebpageIntakeRecord(
+                source=source_id,
+                source_type="webpage",
+                source_url=page_url,
+                published_at=published_at,
+                collected_at=fetched_at,
+                raw_artifact_path=raw_path or Path(""),
+                title=title,
+                summary=str(payload.get("description") or "") or None,
+                content=text,
+                fingerprint=fingerprint,
+            )
+        except ValidationError as exc:
+            msg = f"invalid webpage intake record for {page_url}"
+            raise TrafilaturaExtractionError(msg) from exc
         return WebpageExtractionResult(
             source_id=source_id,
             page_url=page_url,
-            title=str(payload.get("title") or ""),
-            published_at=_published_at(payload),
+            title=title,
+            published_at=published_at,
             fetched_at=fetched_at,
             response_from_cache=_response_from_cache(self._http_client),
             extracted_text=text,
-            fingerprint=content_fingerprint(text),
+            fingerprint=fingerprint,
             extracted_metadata=payload,
             raw_response_path=raw_path,
             pre_normalized_path=pre_normalized_path,
+            intake_record=intake_record,
             source_trace={
                 "provider_name": "trafilatura",
                 "page_url": page_url,

@@ -163,3 +163,18 @@ handling, and source trace fields.
 - Scope: provider outputs may carry `fingerprint`; no repository, automatic
   duplicate dropping, cross-source merge, fuzzy matching, embeddings, or
   semantic deduplication.
+
+### Current Component: Provider Intake Validation via Pydantic
+
+- Install: existing Pydantic 2.x dependency.
+- Scope: pre-normalized provider records only; no final Evidence model or
+  repository.
+- Models: `RSSIntakeRecord`, `WebpageIntakeRecord`, and
+  `AnnouncementIntakeRecord`.
+- Common fields: `source`, `source_type`, `source_url` or `source_identifier`,
+  `published_at`, `collected_at`, `raw_artifact_path`, `title`, `summary`,
+  `content`, and `fingerprint`.
+- Missing source data: nullable fields remain `None`; adapters do not invent
+  provider facts.
+- Failure handling: invalid provider records raise clear adapter errors after
+  raw and pre-normalized artifacts are preserved.

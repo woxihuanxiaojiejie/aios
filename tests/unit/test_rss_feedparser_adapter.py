@@ -32,8 +32,10 @@ def test_feedparser_rss_adapter_maps_real_feed_fixture(tmp_path: Path) -> None:
     assert result.pre_normalized_path.exists()
     assert result.feed_title
     assert result.items
+    assert result.intake_records
 
     item = result.items[0]
+    record = result.intake_records[0]
     assert item.source_id == "bbc-business"
     assert item.provider_name == "feedparser"
     assert item.feed_url == result.feed_url
@@ -45,6 +47,11 @@ def test_feedparser_rss_adapter_maps_real_feed_fixture(tmp_path: Path) -> None:
     assert item.raw_entry
     assert item.source_trace["provider_name"] == "feedparser"
     assert item.source_trace["feed_url"] == result.feed_url
+    assert record.source == "bbc-business"
+    assert record.source_type == "rss"
+    assert record.source_url == result.feed_url
+    assert record.raw_artifact_path == result.raw_response_path
+    assert record.fingerprint == item.fingerprint
 
 
 def test_feedparser_rss_adapter_rejects_empty_feed_fixture() -> None:

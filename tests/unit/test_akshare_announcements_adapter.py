@@ -41,8 +41,10 @@ def test_akshare_announcements_adapter_maps_real_cninfo_fixture(
     assert result.pre_normalized_path is not None
     assert result.pre_normalized_path.exists()
     assert result.items
+    assert result.intake_records
 
     item = result.items[0]
+    record = result.intake_records[0]
     assert item.symbol == "000001"
     assert item.short_name == "平安银行"
     assert item.title == "独立董事审核意见"
@@ -53,6 +55,11 @@ def test_akshare_announcements_adapter_maps_real_cninfo_fixture(
     assert item.source_trace["provider_name"] == "akshare"
     assert item.source_trace["source_function"] == result.source_function
     assert item.source_trace["announcement_url"].startswith("http://www.cninfo.com.cn")
+    assert record.source == "akshare"
+    assert record.source_type == "announcement"
+    assert record.source_identifier == "000001"
+    assert record.raw_artifact_path == result.raw_response_path
+    assert record.fingerprint == item.fingerprint
 
 
 def test_akshare_announcements_fetch_many_keeps_provider_failures_local() -> None:

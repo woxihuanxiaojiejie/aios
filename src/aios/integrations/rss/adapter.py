@@ -10,12 +10,13 @@ from time import struct_time
 from typing import Any, Protocol
 
 import feedparser  # type: ignore[import-untyped]
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from aios.integrations.fingerprint import content_fingerprint
 from aios.integrations.http_client import HTTPClientConfig, RequestsHTTPClient
 from aios.integrations.http_rate_limit import ProviderRateLimiter
 from aios.integrations.http_retry import RetryingHTTPFetcher
+from aios.integrations.provider_records import RSSIntakeRecord
 
 
 class RSSFeedFetchError(Exception):
@@ -104,6 +105,7 @@ class RSSFeedResult(BaseModel):
     response_from_cache: bool | None = None
     raw_response_path: Path | None = None
     pre_normalized_path: Path | None = None
+    intake_records: tuple[RSSIntakeRecord, ...] = ()
     items: tuple[RSSNewsItem, ...]
 
     @field_validator("fetched_at")
@@ -209,15 +211,22 @@ class FeedparserRSSAdapter:
             fetched_at=fetched_at,
             persist_dir=persist_dir,
         )
-        items = tuple(
-            _entry_to_item(
-                entry,
-                source_id=source_id,
-                feed_url=feed_url,
-                fetched_at=fetched_at,
+        try:
+            items = tuple(
+                _entry_to_item(
+                    entry,
+                    source_id=source_id,
+                    feed_url=feed_url,
+                    fetched_at=fetched_at,
+                )
+                for entry in entries
             )
-            for entry in entries
-        )
+            intake_records = tuple(
+                _item_to_intake_record(item, raw_path=raw_path) for item in items
+            )
+        except ValidationError as exc:
+            msg = f"invalid RSS intake record for {feed_url}"
+            raise RSSFeedParseError(msg) from exc
         return RSSFeedResult(
             source_id=source_id,
             feed_url=feed_url,
@@ -226,6 +235,7 @@ class FeedparserRSSAdapter:
             response_from_cache=_response_from_cache(self._http_client),
             raw_response_path=raw_path,
             pre_normalized_path=pre_normalized_path,
+            intake_records=intake_records,
             items=items,
         )
 
@@ -292,6 +302,25 @@ def _entry_to_item(
             "entry_id": entry.get("id"),
             "entry_link": link,
         },
+    )
+
+
+def _item_to_intake_record(
+    item: RSSNewsItem,
+    *,
+    raw_path: Path | None,
+) -> RSSIntakeRecord:
+    return RSSIntakeRecord(
+        source=item.source_id,
+        source_type="rss",
+        source_url=item.feed_url,
+        published_at=item.published_at,
+        collected_at=item.collected_at,
+        raw_artifact_path=raw_path or Path(""),
+        title=item.title,
+        summary=item.raw_content,
+        content=item.raw_content,
+        fingerprint=item.fingerprint,
     )
 
 

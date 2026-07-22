@@ -35,12 +35,18 @@ def test_trafilatura_webpage_adapter_extracts_real_html_fixture(
     assert result.raw_response_path.read_bytes() == raw_html
     assert result.pre_normalized_path is not None
     assert result.pre_normalized_path.exists()
+    assert result.intake_record is not None
     assert result.title
     assert result.extracted_text
     assert len(result.fingerprint) == 64
     assert "inflation" in result.extracted_text.lower()
     assert result.source_trace["provider_name"] == "trafilatura"
     assert result.source_trace["page_url"] == ARTICLE_URL
+    assert result.intake_record.source == "bbc-business"
+    assert result.intake_record.source_type == "webpage"
+    assert result.intake_record.source_url == ARTICLE_URL
+    assert result.intake_record.raw_artifact_path == result.raw_response_path
+    assert result.intake_record.fingerprint == result.fingerprint
 
 
 def test_trafilatura_webpage_adapter_rejects_unextractable_html() -> None:
