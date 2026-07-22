@@ -41,6 +41,7 @@ def test_feedparser_rss_adapter_maps_real_feed_fixture(tmp_path: Path) -> None:
     assert item.url.startswith("https://")
     assert item.collected_at == fetched_at
     assert item.raw_content
+    assert len(item.fingerprint) == 64
     assert item.raw_entry
     assert item.source_trace["provider_name"] == "feedparser"
     assert item.source_trace["feed_url"] == result.feed_url

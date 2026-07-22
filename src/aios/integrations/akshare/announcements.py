@@ -10,6 +10,7 @@ from typing import Any, Protocol
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from aios.integrations.akshare.client import AKShareClient
+from aios.integrations.fingerprint import content_fingerprint
 
 SOURCE_FUNCTION = "stock_zh_a_disclosure_report_cninfo"
 
@@ -38,6 +39,7 @@ class AKShareAnnouncementItem(BaseModel):
     url: str = Field(min_length=1)
     published_at: datetime
     collected_at: datetime
+    fingerprint: str = Field(min_length=64, max_length=64)
     raw_row: dict[str, Any]
     source_trace: dict[str, Any]
 
@@ -247,6 +249,7 @@ def _row_to_item(
         url=url,
         published_at=published_at,
         collected_at=collected_at,
+        fingerprint=content_fingerprint(f"{symbol}\n{title}\n{url}"),
         raw_row=row,
         source_trace={
             "provider_name": "akshare",

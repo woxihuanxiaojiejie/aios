@@ -37,6 +37,7 @@ def test_trafilatura_webpage_adapter_extracts_real_html_fixture(
     assert result.pre_normalized_path.exists()
     assert result.title
     assert result.extracted_text
+    assert len(result.fingerprint) == 64
     assert "inflation" in result.extracted_text.lower()
     assert result.source_trace["provider_name"] == "trafilatura"
     assert result.source_trace["page_url"] == ARTICLE_URL

@@ -149,3 +149,17 @@ handling, and source trace fields.
   rate limiting again before the provider request.
 - Failure handling: fail-fast configs raise `ProviderRateLimitExceeded`;
   waiting configs delegate waiting to pyrate-limiter.
+
+### Current Component: Stable Content Fingerprints via hashlib
+
+- Install: Python standard library only.
+- Configuration: none.
+- Minimal entry: `content_fingerprint(text)`.
+- Normalization: Unicode NFC, trim leading/trailing whitespace, collapse
+  consecutive whitespace including newline differences to one space.
+- Preserved content: punctuation, digits, case, and all non-whitespace text are
+  not removed or rewritten.
+- Output: SHA-256 lowercase hex digest.
+- Scope: provider outputs may carry `fingerprint`; no repository, automatic
+  duplicate dropping, cross-source merge, fuzzy matching, embeddings, or
+  semantic deduplication.

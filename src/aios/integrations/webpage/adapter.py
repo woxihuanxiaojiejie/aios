@@ -10,6 +10,7 @@ from typing import Any, Protocol
 import trafilatura
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from aios.integrations.fingerprint import content_fingerprint
 from aios.integrations.http_client import HTTPClientConfig, RequestsHTTPClient
 from aios.integrations.http_rate_limit import ProviderRateLimiter
 from aios.integrations.http_retry import RetryingHTTPFetcher
@@ -75,6 +76,7 @@ class WebpageExtractionResult(BaseModel):
     fetched_at: datetime
     response_from_cache: bool | None = None
     extracted_text: str = Field(min_length=1)
+    fingerprint: str = Field(min_length=64, max_length=64)
     extracted_metadata: dict[str, Any]
     raw_response_path: Path | None = None
     pre_normalized_path: Path | None = None
@@ -204,6 +206,7 @@ class TrafilaturaWebpageAdapter:
             fetched_at=fetched_at,
             response_from_cache=_response_from_cache(self._http_client),
             extracted_text=text,
+            fingerprint=content_fingerprint(text),
             extracted_metadata=payload,
             raw_response_path=raw_path,
             pre_normalized_path=pre_normalized_path,

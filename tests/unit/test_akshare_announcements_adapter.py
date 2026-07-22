@@ -48,6 +48,7 @@ def test_akshare_announcements_adapter_maps_real_cninfo_fixture(
     assert item.title == "独立董事审核意见"
     assert item.published_at == datetime(2023, 12, 9, tzinfo=UTC)
     assert item.collected_at == fetched_at
+    assert len(item.fingerprint) == 64
     assert item.raw_row == rows[0]
     assert item.source_trace["provider_name"] == "akshare"
     assert item.source_trace["source_function"] == result.source_function

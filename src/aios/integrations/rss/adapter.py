@@ -12,6 +12,7 @@ from typing import Any, Protocol
 import feedparser  # type: ignore[import-untyped]
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from aios.integrations.fingerprint import content_fingerprint
 from aios.integrations.http_client import HTTPClientConfig, RequestsHTTPClient
 from aios.integrations.http_rate_limit import ProviderRateLimiter
 from aios.integrations.http_retry import RetryingHTTPFetcher
@@ -77,6 +78,7 @@ class RSSNewsItem(BaseModel):
     published_at: datetime | None = None
     collected_at: datetime
     raw_content: str = Field(min_length=1)
+    fingerprint: str = Field(min_length=64, max_length=64)
     raw_entry: dict[str, Any]
     source_trace: dict[str, Any]
 
@@ -281,6 +283,7 @@ def _entry_to_item(
         published_at=_published_at(entry),
         collected_at=fetched_at,
         raw_content=raw_content,
+        fingerprint=content_fingerprint(f"{title}\n{raw_content}"),
         raw_entry=entry,
         source_trace={
             "provider_name": "feedparser",
