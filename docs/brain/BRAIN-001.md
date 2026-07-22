@@ -83,3 +83,16 @@ handling, and source trace fields.
   the whole batch.
 - Source trace: each item keeps `provider_name`, `feed_url`, `source_id`,
   `entry_id`, and `entry_link`.
+
+### Current Component: Webpage Text via trafilatura
+
+- Install: runtime dependency `trafilatura>=2,<3`.
+- Configuration: page URL and `source_id`; no secrets required.
+- Minimal entry: `TrafilaturaWebpageAdapter().fetch(page_url=..., source_id=...)`.
+- Real-data test: `AIOS_RUN_EXTERNAL_NEWS_TESTS=1 uv run pytest tests/external/test_external_webpage_extraction_smoke.py -q -s`.
+- Raw retention: writes HTML and trafilatura JSON payload under
+  `results/brain001/webpage/`.
+- Failure handling: `fetch_many()` records per-page errors without failing the
+  whole batch.
+- Source trace: each result keeps `provider_name`, `page_url`, `source_id`,
+  `hostname`, and trafilatura `fingerprint` when available.
