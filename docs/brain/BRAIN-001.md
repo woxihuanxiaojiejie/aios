@@ -110,3 +110,16 @@ handling, and source trace fields.
   without failing the whole batch.
 - Source trace: each item keeps `provider_name`, `source_function`, `symbol`,
   `announcement_url`, and `announcement_time`.
+
+### Current Component: HTTP Retry via tenacity
+
+- Install: runtime dependency `tenacity>=8,<10`.
+- Configuration: retry attempts and fixed wait seconds at the HTTP fetcher
+  boundary.
+- Minimal entry: `RetryingHTTPFetcher(fetch_once, attempts=3).fetch(url)`.
+- Real-data test: rerun RSS/webpage external smoke through their default HTTP
+  clients.
+- Failure handling: exhausted retries re-raise the provider error so adapters
+  can record per-source failures.
+- Source trace: preserved by the calling source adapter; retry does not mutate
+  provider metadata.

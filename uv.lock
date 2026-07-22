@@ -89,6 +89,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "sqlalchemy" },
+    { name = "tenacity" },
     { name = "trafilatura" },
     { name = "uvicorn" },
 ]
@@ -130,6 +131,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.8,<3" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "sqlalchemy", specifier = ">=2.0,<3" },
+    { name = "tenacity", specifier = ">=8,<10" },
     { name = "trafilatura", specifier = ">=2,<3" },
     { name = "uvicorn", specifier = ">=0.30,<1" },
     { name = "vibe-trading-ai", marker = "extra == 'vibe-trading'", specifier = "==0.1.11" },

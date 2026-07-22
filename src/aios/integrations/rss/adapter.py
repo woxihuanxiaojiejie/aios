@@ -14,6 +14,8 @@ from urllib.request import Request, urlopen
 import feedparser  # type: ignore[import-untyped]
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from aios.integrations.http_retry import RetryingHTTPFetcher
+
 
 class RSSFeedFetchError(Exception):
     """Raised when an RSS feed cannot be fetched."""
@@ -29,14 +31,27 @@ class RSSHTTPClient(Protocol):
 
 
 class UrllibRSSHTTPClient:
+    def __init__(self, attempts: int = 3, wait_seconds: float = 1.0) -> None:
+        self._fetcher = RetryingHTTPFetcher(
+            self._fetch_once,
+            attempts=attempts,
+            wait_seconds=wait_seconds,
+        )
+
     def fetch(self, url: str) -> bytes:
+        try:
+            return self._fetcher.fetch(url)
+        except OSError as exc:
+            msg = f"RSS feed request failed for {url}"
+            raise RSSFeedFetchError(msg) from exc
+
+    def _fetch_once(self, url: str) -> bytes:
         request = Request(url, headers={"User-Agent": "aios-brain001/0.1"})
         try:
             with urlopen(request, timeout=30) as response:
                 body = response.read()
         except (HTTPError, URLError, TimeoutError, OSError) as exc:
-            msg = f"RSS feed request failed for {url}"
-            raise RSSFeedFetchError(msg) from exc
+            raise OSError(str(exc)) from exc
         if not isinstance(body, bytes):
             msg = f"RSS feed response was not bytes for {url}"
             raise RSSFeedFetchError(msg)
