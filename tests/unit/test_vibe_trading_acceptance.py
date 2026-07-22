@@ -12,6 +12,7 @@ import pytest
 )
 def test_real_vibe_trading_cli_acceptance() -> None:
     from aios.vibe_trading.adapter import VibeTradingAdapter
+    from aios.vibe_trading.output_mapper import VibeTradingRawResult
 
     result = VibeTradingAdapter().analyze(
         symbol="600519",
@@ -25,3 +26,9 @@ def test_real_vibe_trading_cli_acceptance() -> None:
 
     assert result.vibe_run_id
     assert result.workflow == "investment_committee"
+    structured_payload = result.model_dump(mode="json")
+    assert VibeTradingRawResult.model_validate(structured_payload)
+    raw_state = structured_payload["raw_state"]
+    assert raw_state["external_agent_claims_only"] is True
+    assert raw_state["run_record"]["stdout_raw"]
+    assert raw_state["run_record"]["provider_name"] == "vibe_trading"

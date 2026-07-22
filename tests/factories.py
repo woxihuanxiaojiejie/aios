@@ -29,7 +29,7 @@ from aios.kernel.watchlist import WatchlistItem, WatchlistStatus
 
 
 def fixed_now() -> datetime:
-    return datetime(2026, 7, 19, 8, 0, tzinfo=UTC)
+    return datetime(2026, 7, 22, 0, 0, tzinfo=UTC)
 
 
 def make_evidence(

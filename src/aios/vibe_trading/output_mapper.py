@@ -13,6 +13,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from aios.kernel.enums import AgentRole
+from aios.kernel.evidence import Evidence
 
 
 class VibeTradingRawResult(BaseModel):
@@ -116,6 +117,40 @@ class VibeTradingAgentReportInput(BaseModel):
     evidence_ids: tuple[str, ...] = ()
     source: str = "vibe_trading"
     raw_reference: str
+
+
+class VibeTradingDecisionCandidate(BaseModel):
+    source: str = "vibe_trading"
+    action: str
+    horizon_days: int
+    reasoning: str
+    evidence_ids: tuple[str, ...] = ()
+    validation_warnings: tuple[str, ...] = ()
+    requires_aios_review: bool = True
+
+
+class VibeTradingRunRecord(BaseModel):
+    run_id: str
+    provider_name: str = "vibe_trading"
+    target: str
+    market: str
+    horizon_days: int
+    command: tuple[str, ...]
+    started_at: datetime
+    completed_at: datetime
+    duration_seconds: float
+    exit_code: int | None
+    status: str
+    stdout_raw: str
+    stderr_raw: str
+    parsed_output: dict[str, Any] | None = None
+    input_hash: str
+    output_hash: str
+    adapter_version: str
+    token_usage: dict[str, int] | None = None
+    error_type: str | None = None
+    error_message: str | None = None
+    validation: dict[str, Any] | None = None
 
 
 _REPORT_LABELS = (
@@ -236,6 +271,79 @@ def map_vibe_trading_result_to_agent_report_inputs(
             )
         )
     return payloads
+
+
+def vibe_record_to_external_agent_evidence(record: VibeTradingRunRecord) -> Evidence:
+    parsed = record.parsed_output or {}
+    generated_at = record.completed_at
+    report = str(parsed.get("raw_report") or record.stdout_raw or record.error_message)
+    return Evidence(
+        evidence_type="external_agent_report",
+        source="vibe_trading",
+        symbols=(record.target,),
+        published_at=generated_at,
+        available_at=generated_at,
+        summary=_evidence_summary(parsed, record),
+        reliability=0.5,
+        content_hash=record.output_hash,
+        metadata={
+            "raw_output_hash": record.output_hash,
+            "target": record.target,
+            "market": record.market,
+            "horizon_days": record.horizon_days,
+            "generated_at": generated_at.isoformat(),
+            "report": report,
+            "validation": record.validation
+            or {
+                "valid": False,
+                "errors": ["validation was not produced"],
+                "warnings": [],
+                "request_horizon_days": record.horizon_days,
+                "detected_horizon": None,
+            },
+            "provenance": {
+                "provider_name": record.provider_name,
+                "run_id": record.run_id,
+                "command": list(record.command),
+                "adapter_version": record.adapter_version,
+                "status": record.status,
+                "external_agent_claims_only": True,
+            },
+        },
+    )
+
+
+def vibe_record_to_decision_candidate(
+    record: VibeTradingRunRecord,
+    *,
+    evidence_ids: list[str] | tuple[str, ...],
+) -> VibeTradingDecisionCandidate:
+    parsed = record.parsed_output or {}
+    validation = record.validation or {}
+    warnings = tuple(str(item) for item in validation.get("warnings", ()))
+    return VibeTradingDecisionCandidate(
+        source="vibe_trading",
+        action=str(parsed.get("decision") or "UNKNOWN"),
+        horizon_days=record.horizon_days,
+        reasoning=str(parsed.get("summary") or parsed.get("raw_report") or ""),
+        evidence_ids=tuple(evidence_ids),
+        validation_warnings=warnings,
+        requires_aios_review=True,
+    )
+
+
+def _evidence_summary(
+    parsed: dict[str, Any], record: VibeTradingRunRecord, limit: int = 500
+) -> str:
+    summary = str(
+        parsed.get("summary")
+        or parsed.get("raw_report")
+        or record.error_message
+        or "Vibe-Trading external agent report"
+    ).strip()
+    if len(summary) > limit:
+        return summary[:limit]
+    return summary
 
 
 def _safe_serialise(obj: Any) -> dict[str, Any]:
