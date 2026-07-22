@@ -13,6 +13,7 @@ import feedparser  # type: ignore[import-untyped]
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from aios.integrations.http_client import HTTPClientConfig, RequestsHTTPClient
+from aios.integrations.http_rate_limit import ProviderRateLimiter
 from aios.integrations.http_retry import RetryingHTTPFetcher
 
 
@@ -35,8 +36,12 @@ class UrllibRSSHTTPClient:
         attempts: int = 3,
         wait_seconds: float = 1.0,
         http_config: HTTPClientConfig | None = None,
+        rate_limiter: ProviderRateLimiter | None = None,
     ) -> None:
-        self._client = RequestsHTTPClient(config=http_config)
+        self._client = RequestsHTTPClient(
+            config=http_config or HTTPClientConfig(provider_name="rss"),
+            rate_limiter=rate_limiter,
+        )
         self.last_from_cache: bool | None = None
         self._fetcher = RetryingHTTPFetcher(
             self._fetch_once,

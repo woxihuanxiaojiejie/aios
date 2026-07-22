@@ -17,6 +17,7 @@ dependencies = [
     "trafilatura>=2,<3",
     "tenacity>=8,<10",
     "requests-cache>=1.2,<2",
+    "pyrate-limiter>=3,<5",
 ]
 
 [project.optional-dependencies]

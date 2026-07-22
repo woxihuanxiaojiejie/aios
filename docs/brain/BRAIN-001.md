@@ -137,3 +137,15 @@ handling, and source trace fields.
   `requests.Session`.
 - Source trace: RSS/webpage result exposes `response_from_cache`; raw artifact
   saving remains unchanged.
+
+### Current Component: Provider Rate Limiting via pyrate-limiter
+
+- Install: runtime dependency `pyrate-limiter>=3,<5`.
+- Configuration: per-provider `ProviderRateLimitConfig(max_requests, window_seconds, wait_strategy, timeout_seconds)`.
+- Minimal entry: `ProviderRateLimiter({"rss": ProviderRateLimitConfig(...)}).acquire("rss")`.
+- Boundary: `RequestsHTTPClient` acquires a permit immediately before each
+  external request attempt.
+- Retry order: tenacity wraps the single-attempt function, so every retry calls
+  rate limiting again before the provider request.
+- Failure handling: fail-fast configs raise `ProviderRateLimitExceeded`;
+  waiting configs delegate waiting to pyrate-limiter.

@@ -7,12 +7,16 @@ from typing import Any
 import requests
 import requests_cache
 
+from aios.integrations.http_rate_limit import ProviderRateLimiter
+from aios.integrations.http_retry import RetryingHTTPFetcher
+
 DEFAULT_CACHE_EXPIRE_SECONDS = 900
 DEFAULT_RUNTIME_DIR = Path("runtime") / "brain001"
 
 
 @dataclass(frozen=True)
 class HTTPClientConfig:
+    provider_name: str = "default"
     cache_enabled: bool = False
     cache_name: Path = DEFAULT_RUNTIME_DIR / "http-cache"
     expire_after_seconds: int = DEFAULT_CACHE_EXPIRE_SECONDS
@@ -31,8 +35,17 @@ class RequestsHTTPClient:
         *,
         config: HTTPClientConfig | None = None,
         session: Any | None = None,
+        rate_limiter: ProviderRateLimiter | None = None,
+        retry_attempts: int = 1,
+        retry_wait_seconds: float = 0,
     ) -> None:
         self._config = config or HTTPClientConfig()
+        self._rate_limiter = rate_limiter
+        self._fetcher = RetryingHTTPFetcher(
+            self._fetch_response_once,
+            attempts=retry_attempts,
+            wait_seconds=retry_wait_seconds,
+        )
         self._cache_enabled = False
         self.last_from_cache: bool | None = None
         if session is not None:
@@ -62,6 +75,11 @@ class RequestsHTTPClient:
         return self.fetch_response(url).body
 
     def fetch_response(self, url: str) -> HTTPFetchResponse:
+        return self._fetcher.fetch(url)
+
+    def _fetch_response_once(self, url: str) -> HTTPFetchResponse:
+        if self._rate_limiter is not None:
+            self._rate_limiter.acquire(self._config.provider_name)
         response = self._session.get(url, timeout=self._config.timeout_seconds)
         response.raise_for_status()
         from_cache = bool(getattr(response, "from_cache", False))
