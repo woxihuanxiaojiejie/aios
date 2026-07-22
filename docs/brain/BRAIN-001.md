@@ -61,8 +61,8 @@ collection, retry, cache, parsing, scheduling, or deduplication code.
 | HTTP retry | Direct reuse | `tenacity` |
 | Rate limiting | Direct reuse | `pyrate-limiter` |
 | HTTP caching | Direct reuse | `requests-cache` |
-| Content deduplication | Needs adapter | exact hash first, `datasketch` for near-duplicates |
-| Scheduling | Direct reuse | APScheduler |
+| Content deduplication | Needs adapter | deterministic exact matching only; no semantic deduplication |
+| Scheduling | Deferred | no scheduler is needed for the current manual intake workflow |
 | Data validation | Already integrated | Pydantic |
 
 ### Component Intake Rule
@@ -178,3 +178,55 @@ handling, and source trace fields.
   provider facts.
 - Failure handling: invalid provider records raise clear adapter errors after
   raw and pre-normalized artifacts are preserved.
+
+### Current Component: Unified Evidence Model
+
+- Module: `aios.integrations.evidence`; this is the BRAIN-001 intake Evidence
+  contract and does not replace the existing decision-lifecycle Kernel model.
+- Minimal entries: `evidence_from_rss()`, `evidence_from_webpage()`, and
+  `evidence_from_announcement()`.
+- Traceability: core fields remain queryable; the validated Provider record and
+  raw artifact path are retained unchanged.
+- Point-in-Time: all datetimes are timezone-aware UTC values and
+  `available_at >= collected_at`; missing provider publication times remain
+  `None`.
+
+### Current Component: Evidence Repository
+
+- Storage: existing PostgreSQL, SQLAlchemy, JSONB, and Alembic systems.
+- Migration: `0011_brain_evidence` adds the `brain_evidence` table without
+  changing the historical Kernel `evidence` table or previous migrations.
+- Operations: create, get by UUID, fingerprint existence, source listing,
+  availability cutoff listing, time-range listing, and filtered queries.
+- Transaction boundary: one Evidence create is committed atomically; failed
+  writes are rolled back and never trigger Provider calls.
+
+### Current Component: Exact Evidence Deduplication
+
+- Module: `aios.integrations.evidence_deduplication`.
+- Rules: same source and identifier reports duplicate or revision; equal
+  fingerprints across sources or identifiers report an exact duplicate
+  candidate.
+- Policy: every result includes the matched ID, fingerprint, and rule name;
+  candidates are always preserved. No title-only, URL-only, fuzzy, semantic,
+  embedding, vector, or LLM deduplication is implemented.
+
+### Current Component: Evidence Query API
+
+- Endpoint: `GET /api/v1/brain/evidence` and
+  `GET /api/v1/brain/evidence/{evidence_id}`.
+- Queries: source, source type, fingerprint, published/collected ranges,
+  `as_of` availability cutoff, pagination, and timestamp sorting.
+- Trace fields: Provider record, metadata, and raw artifact path are omitted by
+  default and included only when explicitly requested.
+- Runtime boundary: read-only Repository access; no collection, LLM, or
+  downstream Brain module is triggered.
+
+### Scheduling Evaluation
+
+The repository has no mature scheduling or task-runner dependency. APScheduler
+is intentionally deferred: current Provider adapters and their real-data smoke
+checks are manually invokable, while Provider contracts, Point-in-Time queries,
+and failure boundaries have just stabilized. A later scheduling task should
+first define re-entry locking, run-state persistence, and per-Provider failure
+isolation before selecting a scheduler.
