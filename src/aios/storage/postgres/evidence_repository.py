@@ -7,7 +7,7 @@ from typing import Literal
 from uuid import UUID
 
 from pydantic import TypeAdapter
-from sqlalchemy import Engine, select
+from sqlalchemy import Engine, desc, func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
@@ -107,6 +107,62 @@ class EvidenceRepository:
     ) -> list[Evidence]:
         column = getattr(BrainEvidenceRecord, timestamp_field)
         return self._list(column >= start, column <= end)
+
+    def query(
+        self,
+        *,
+        source: str | None = None,
+        source_type: str | None = None,
+        fingerprint: str | None = None,
+        published_from: datetime | None = None,
+        published_to: datetime | None = None,
+        collected_from: datetime | None = None,
+        collected_to: datetime | None = None,
+        available_before: datetime | None = None,
+        sort_by: TimestampField = "collected_at",
+        sort_order: Literal["asc", "desc"] = "asc",
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[Evidence], int]:
+        conditions: list[ColumnElement[bool]] = []
+        if source is not None:
+            conditions.append(BrainEvidenceRecord.source == source)
+        if source_type is not None:
+            conditions.append(BrainEvidenceRecord.source_type == source_type)
+        if fingerprint is not None:
+            conditions.append(BrainEvidenceRecord.fingerprint == fingerprint)
+        if published_from is not None:
+            conditions.append(BrainEvidenceRecord.published_at >= published_from)
+        if published_to is not None:
+            conditions.append(BrainEvidenceRecord.published_at <= published_to)
+        if collected_from is not None:
+            conditions.append(BrainEvidenceRecord.collected_at >= collected_from)
+        if collected_to is not None:
+            conditions.append(BrainEvidenceRecord.collected_at <= collected_to)
+        if available_before is not None:
+            conditions.append(BrainEvidenceRecord.available_at <= available_before)
+
+        session = self._session_factory()
+        try:
+            count_statement = select(func.count()).select_from(BrainEvidenceRecord)
+            count_statement = count_statement.where(*conditions)
+            total = int(session.scalar(count_statement) or 0)
+            column = getattr(BrainEvidenceRecord, sort_by)
+            ordering = desc(column) if sort_order == "desc" else column.asc()
+            statement = (
+                select(BrainEvidenceRecord)
+                .where(*conditions)
+                .order_by(ordering, BrainEvidenceRecord.evidence_id)
+                .limit(limit)
+                .offset(offset)
+            )
+            items = [_to_evidence(model) for model in session.scalars(statement).all()]
+            return items, total
+        except SQLAlchemyError as exc:
+            msg = "failed to query Brain Evidence"
+            raise EvidenceRepositoryError(msg) from exc
+        finally:
+            session.close()
 
     def _list(self, *conditions: ColumnElement[bool]) -> list[Evidence]:
         session = self._session_factory()

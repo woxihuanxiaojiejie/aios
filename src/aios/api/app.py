@@ -12,6 +12,7 @@ from aios.adapters.storage import Storage
 from aios.adapters.vibe_trading import VibeTradingResearchAdapter
 from aios.api.errors import add_exception_handlers
 from aios.api.routes import (
+    brain_evidence,
     decision_generation,
     decisions,
     evidence,
@@ -27,6 +28,7 @@ from aios.integrations.akshare.adapter import AKShareMarketDataAdapter
 from aios.integrations.baostock.adapter import BaoStockMarketDataAdapter
 from aios.integrations.litellm.adapter import LiteLLMAdapter
 from aios.storage.postgres import PostgresStorage
+from aios.storage.postgres.evidence_repository import EvidenceRepository
 from aios.storage.postgres.generation_records import LLMGenerationRecordStore
 from aios.vibe_trading.adapter import VibeTradingAdapter
 
@@ -38,6 +40,7 @@ def create_app(
     llm_adapter: LLMAdapter | None = None,
     generation_recorder: GenerationRecorder | None = None,
     vibe_trading_adapter: VibeTradingResearchAdapter | None = None,
+    evidence_repository: EvidenceRepository | None = None,
 ) -> FastAPI:
     load_dotenv(override=True)
     app = FastAPI(title="AIOS", version="0.1.0")
@@ -50,6 +53,9 @@ def create_app(
     )
     resolved_storage = storage or PostgresStorage()
     app.state.storage = resolved_storage
+    app.state.brain_evidence_repository = (
+        evidence_repository or _brain_evidence_repository(resolved_storage)
+    )
     app.state.market_data_adapter = market_data_adapter or AKShareMarketDataAdapter()
     app.state.baostock_market_data_adapter = (
         baostock_market_data_adapter or BaoStockMarketDataAdapter()
@@ -64,6 +70,7 @@ def create_app(
     app.include_router(health.router)
     app.include_router(health.router, prefix="/api/v1")
     app.include_router(evidence.router, prefix="/api/v1")
+    app.include_router(brain_evidence.router, prefix="/api/v1")
     app.include_router(experiments.router, prefix="/api/v1")
     app.include_router(decisions.router, prefix="/api/v1")
     app.include_router(reviews.router, prefix="/api/v1")
@@ -82,6 +89,12 @@ def create_default_app() -> FastAPI:
 def _generation_recorder(storage: Storage) -> GenerationRecorder | None:
     if isinstance(storage, PostgresStorage):
         return LLMGenerationRecordStore(storage.database_url)
+    return None
+
+
+def _brain_evidence_repository(storage: Storage) -> EvidenceRepository | None:
+    if isinstance(storage, PostgresStorage):
+        return EvidenceRepository(storage.database_url)
     return None
 
 

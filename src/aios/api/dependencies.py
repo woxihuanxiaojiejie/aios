@@ -9,6 +9,7 @@ from aios.adapters.market_data import MarketDataAdapter
 from aios.adapters.storage import Storage
 from aios.adapters.vibe_trading import VibeTradingResearchAdapter
 from aios.application.decision_generation import GenerationRecorder
+from aios.storage.postgres.evidence_repository import EvidenceRepository
 from aios.workflows.decision_lifecycle import DecisionLifecycleService
 
 
@@ -36,6 +37,13 @@ def get_vibe_trading_adapter(request: Request) -> VibeTradingResearchAdapter:
     return cast("VibeTradingResearchAdapter", request.app.state.vibe_trading_adapter)
 
 
+def get_brain_evidence_repository(request: Request) -> EvidenceRepository | None:
+    return cast(
+        "EvidenceRepository | None",
+        request.app.state.brain_evidence_repository,
+    )
+
+
 def get_lifecycle(
     storage: Annotated[Storage, Depends(get_storage)],
 ) -> DecisionLifecycleService:
@@ -59,4 +67,8 @@ GenerationRecorderDep = Annotated[
 VibeTradingAdapterDep = Annotated[
     VibeTradingResearchAdapter,
     Depends(get_vibe_trading_adapter),
+]
+BrainEvidenceRepositoryDep = Annotated[
+    EvidenceRepository | None,
+    Depends(get_brain_evidence_repository),
 ]
