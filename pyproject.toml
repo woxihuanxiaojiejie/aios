@@ -74,6 +74,10 @@ ignore_missing_imports = true
 module = ["litellm", "litellm.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["akshare", "akshare.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = [".", "src"]

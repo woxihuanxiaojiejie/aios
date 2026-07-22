@@ -96,3 +96,17 @@ handling, and source trace fields.
   whole batch.
 - Source trace: each result keeps `provider_name`, `page_url`, `source_id`,
   `hostname`, and trafilatura `fingerprint` when available.
+
+### Current Component: CNInfo Announcements via AKShare
+
+- Install: existing optional dependency group `market-data`
+  (`uv sync --extra market-data` or `uv run --extra market-data ...`).
+- Configuration: symbol, market, category, and date range; no secrets required.
+- Minimal entry: `AKShareAnnouncementsAdapter().fetch_cninfo_disclosures(...)`.
+- Real-data test: `AIOS_RUN_EXTERNAL_MARKET_TESTS=1 uv run --extra market-data pytest tests/external/test_external_akshare_announcements_smoke.py -q -s`.
+- Raw retention: writes AKShare provider rows under
+  `results/brain001/announcements/`.
+- Failure handling: `fetch_many_cninfo_disclosures()` records per-symbol errors
+  without failing the whole batch.
+- Source trace: each item keeps `provider_name`, `source_function`, `symbol`,
+  `announcement_url`, and `announcement_time`.
