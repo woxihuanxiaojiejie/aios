@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 from aios.application.brain002 import SkillInput
 from aios.kernel.brain002 import SkillResultPayload
 from aios.kernel.evidence import Evidence
-from aios.skills.brain002 import TechnicalTrendSkill
+from aios.skills.brain002 import SectorStrengthSkill, TechnicalTrendSkill
 
 
 def now() -> datetime:
@@ -57,3 +57,33 @@ def test_technical_trend_skill_definition_and_prompt_are_isolated() -> None:
     assert "Do not make final trading decisions" in prompt.system_prompt
     assert "ev_price" in prompt.user_prompt
     assert "Close above 20 day average." in prompt.user_prompt
+
+
+def test_sector_strength_skill_definition_and_prompt_are_isolated() -> None:
+    skill = SectorStrengthSkill()
+    input_payload = SkillInput(
+        **{
+            **skill_input().model_dump(),
+            "evidence": (
+                evidence(
+                    "ev_sector",
+                    "sector_snapshot",
+                    "Semiconductors outperform broad market.",
+                ),
+            ),
+        }
+    )
+
+    prompt = skill.build_prompt(input_payload)
+
+    assert skill.definition.skill_id == "sector_strength"
+    assert skill.definition.required_evidence_types == ("sector_snapshot",)
+    assert skill.response_schema is SkillResultPayload
+    assert skill.prompt_version == "sector_strength_v1"
+    assert "sector strength" in prompt.system_prompt
+    assert "relative performance" in prompt.system_prompt
+    assert "Do not directly decide individual stock buys or sells" in (
+        prompt.system_prompt
+    )
+    assert "ev_sector" in prompt.user_prompt
+    assert "Semiconductors outperform broad market." in prompt.user_prompt
