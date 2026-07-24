@@ -265,3 +265,62 @@ class SkillResult(KernelModel):
             msg = "supporting and contradicting evidence IDs must not overlap"
             raise ValueError(msg)
         return self
+
+
+class SkillResultPayload(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    conclusion: str = Field(min_length=1)
+    direction: SkillDirection
+    confidence: float = Field(ge=0, le=1)
+    supporting_evidence_ids: tuple[str, ...] = ()
+    contradicting_evidence_ids: tuple[str, ...] = ()
+    assumptions: tuple[str, ...] = ()
+    risk_factors: tuple[str, ...] = Field(min_length=1)
+    invalid_conditions: tuple[str, ...] = Field(min_length=1)
+    missing_information: tuple[str, ...] = Field(min_length=1)
+    reasoning_summary: str = Field(min_length=1)
+
+    @field_validator("conclusion", "reasoning_summary")
+    @classmethod
+    def normalize_required_text(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            msg = "value must not be empty"
+            raise ValueError(msg)
+        return normalized
+
+    @field_validator(
+        "supporting_evidence_ids",
+        "contradicting_evidence_ids",
+        "assumptions",
+        "risk_factors",
+        "invalid_conditions",
+        "missing_information",
+    )
+    @classmethod
+    def normalize_unique_tuple(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(item.strip() for item in value)
+        if any(not item for item in normalized):
+            msg = "values must not be empty"
+            raise ValueError(msg)
+        if len(normalized) != len(set(normalized)):
+            msg = "duplicate values are not allowed"
+            raise ValueError(msg)
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_evidence_contract(self) -> SkillResultPayload:
+        if (
+            self.direction is not SkillDirection.UNCERTAIN
+            and not self.supporting_evidence_ids
+        ):
+            msg = "non-uncertain SkillResultPayload requires supporting_evidence_ids"
+            raise ValueError(msg)
+        overlap = set(self.supporting_evidence_ids) & set(
+            self.contradicting_evidence_ids
+        )
+        if overlap:
+            msg = "supporting and contradicting evidence IDs must not overlap"
+            raise ValueError(msg)
+        return self

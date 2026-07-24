@@ -1,13 +1,27 @@
 from __future__ import annotations
 
 import builtins
+import concurrent.futures
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Any
+from datetime import datetime
+from typing import Any, Protocol
 
-from aios.kernel.brain002 import AnalysisTask, SkillDefinition
-from aios.kernel.enums import SkillStatus
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from tenacity import Retrying, stop_after_attempt, wait_fixed
+
+from aios.adapters.llm import LLMAdapter, LLMStructuredResult
+from aios.kernel.base import ensure_utc, utc_now
+from aios.kernel.brain002 import (
+    AnalysisTask,
+    SkillDefinition,
+    SkillExecution,
+    SkillResultPayload,
+    TokenUsage,
+)
+from aios.kernel.brain002 import SkillResult as SkillResultRecord
+from aios.kernel.enums import SkillExecutionStatus, SkillStatus
 from aios.kernel.errors import (
     DuplicateEntityError,
     MissingEntityError,
@@ -22,6 +36,48 @@ class SkillSelection:
     rejected_skill_ids: tuple[str, ...]
     selection_reason: dict[str, str]
     matched_conditions: dict[str, tuple[str, ...]]
+
+
+class SkillInput(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    task_id: str = Field(min_length=1)
+    symbol: str = Field(min_length=1)
+    market: str = Field(min_length=1)
+    asset_type: str = Field(min_length=1)
+    analysis_horizon: str = Field(min_length=1)
+    as_of: datetime
+    evidence: tuple[Evidence, ...]
+    market_context: dict[str, Any] = Field(default_factory=dict)
+    user_constraints: dict[str, Any] = Field(default_factory=dict)
+    skill_context: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("as_of")
+    @classmethod
+    def validate_datetime(cls, value: datetime) -> datetime:
+        return ensure_utc(value)
+
+
+@dataclass(frozen=True)
+class SkillPrompt:
+    system_prompt: str
+    user_prompt: str
+    prompt_version: str
+
+
+class ExecutableSkill(Protocol):
+    definition: SkillDefinition
+    response_schema: type[BaseModel]
+    prompt_version: str
+
+    def build_prompt(self, skill_input: SkillInput) -> SkillPrompt:
+        """Build an isolated prompt from the unified skill input."""
+
+
+@dataclass(frozen=True)
+class SkillExecutionOutcome:
+    executions: tuple[SkillExecution, ...]
+    results: tuple[SkillResultRecord, ...]
 
 
 class SkillRegistry:
@@ -323,3 +379,265 @@ class SkillSelector:
             return active.status is SkillStatus.ENABLED
         except MissingEntityError:
             return False
+
+
+class SkillExecutor:
+    def __init__(
+        self,
+        *,
+        llm: LLMAdapter,
+        model: str,
+        timeout_seconds: float = 30.0,
+        max_attempts: int = 2,
+    ) -> None:
+        self._llm = llm
+        self._model = model
+        self._timeout_seconds = timeout_seconds
+        self._max_attempts = max_attempts
+
+    def execute(
+        self,
+        *,
+        task: AnalysisTask,
+        skills: Iterable[ExecutableSkill],
+        evidence: Iterable[Evidence],
+        market_context: dict[str, Any] | None = None,
+    ) -> SkillExecutionOutcome:
+        allowed_evidence = self._point_in_time_evidence(task, evidence)
+        executions: builtins.list[SkillExecution] = []
+        results: builtins.list[SkillResultRecord] = []
+        for skill in skills:
+            execution, result = self._execute_one(
+                task=task,
+                skill=skill,
+                evidence=allowed_evidence,
+                market_context=market_context or {},
+            )
+            executions.append(execution)
+            if result is not None:
+                results.append(result)
+        return SkillExecutionOutcome(
+            executions=tuple(executions),
+            results=tuple(results),
+        )
+
+    def _execute_one(
+        self,
+        *,
+        task: AnalysisTask,
+        skill: ExecutableSkill,
+        evidence: tuple[Evidence, ...],
+        market_context: dict[str, Any],
+    ) -> tuple[SkillExecution, SkillResultRecord | None]:
+        started_at = utc_now()
+        attempts = 0
+        prompt_version = skill.prompt_version
+        try:
+            skill_input = SkillInput(
+                task_id=task.task_id,
+                symbol=task.symbol,
+                market=task.market,
+                asset_type=task.asset_type,
+                analysis_horizon=task.horizon,
+                as_of=task.as_of,
+                evidence=evidence,
+                market_context=market_context,
+                user_constraints=task.user_constraints,
+                skill_context={},
+            )
+            prompt = skill.build_prompt(skill_input)
+            prompt_version = prompt.prompt_version
+
+            def attempt() -> LLMStructuredResult:
+                nonlocal attempts
+                attempts += 1
+                return self._run_with_timeout(
+                    lambda: self._llm.generate_structured(
+                        model=self._model,
+                        system_prompt=prompt.system_prompt,
+                        user_prompt=prompt.user_prompt,
+                        response_schema=skill.response_schema,
+                        temperature=0.0,
+                    )
+                )
+
+            retryer = Retrying(
+                stop=stop_after_attempt(self._max_attempts),
+                wait=wait_fixed(0),
+                reraise=True,
+            )
+            llm_result = retryer(attempt)
+            payload = self._validated_payload(llm_result.parsed)
+            finished_at = utc_now()
+            execution = self._execution_record(
+                task=task,
+                skill=skill,
+                started_at=started_at,
+                finished_at=finished_at,
+                status=SkillExecutionStatus.SUCCEEDED,
+                prompt_version=prompt_version,
+                llm_result=llm_result,
+                retry_count=attempts - 1,
+                error=None,
+            )
+            result = self._result_record(
+                execution=execution,
+                skill=skill,
+                payload=payload,
+                llm_result=llm_result,
+            )
+            return execution, result
+        except TimeoutError as exc:
+            return self._failed_execution(
+                task=task,
+                skill=skill,
+                started_at=started_at,
+                prompt_version=prompt_version,
+                retry_count=max(attempts - 1, 0),
+                status=SkillExecutionStatus.TIMED_OUT,
+                error=str(exc),
+            ), None
+        except Exception as exc:
+            return self._failed_execution(
+                task=task,
+                skill=skill,
+                started_at=started_at,
+                prompt_version=prompt_version,
+                retry_count=max(attempts - 1, 0),
+                status=SkillExecutionStatus.FAILED,
+                error=str(exc),
+            ), None
+
+    def _point_in_time_evidence(
+        self,
+        task: AnalysisTask,
+        evidence: Iterable[Evidence],
+    ) -> tuple[Evidence, ...]:
+        evidence_by_id = {item.evidence_id: item for item in evidence}
+        if task.evidence_ids:
+            missing_ids = [
+                evidence_id
+                for evidence_id in task.evidence_ids
+                if evidence_id not in evidence_by_id
+            ]
+            if missing_ids:
+                msg = f"AnalysisTask references missing Evidence IDs: {missing_ids}"
+                raise ReferenceIntegrityError(msg)
+            ordered_evidence = [
+                evidence_by_id[evidence_id] for evidence_id in task.evidence_ids
+            ]
+        else:
+            ordered_evidence = list(evidence_by_id.values())
+        return tuple(
+            item for item in ordered_evidence if item.available_at <= task.as_of
+        )
+
+    def _run_with_timeout(
+        self,
+        operation: Callable[[], LLMStructuredResult],
+    ) -> LLMStructuredResult:
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future: concurrent.futures.Future[LLMStructuredResult] = executor.submit(
+            operation
+        )
+        try:
+            return future.result(timeout=self._timeout_seconds)
+        except concurrent.futures.TimeoutError as exc:
+            future.cancel()
+            msg = f"Skill execution timed out after {self._timeout_seconds}s"
+            raise TimeoutError(msg) from exc
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
+
+    def _validated_payload(self, parsed: BaseModel) -> SkillResultPayload:
+        try:
+            return SkillResultPayload.model_validate(parsed.model_dump())
+        except ValidationError as exc:
+            msg = f"SkillResultPayload validation failed: {exc}"
+            raise ValueError(msg) from exc
+
+    def _execution_record(
+        self,
+        *,
+        task: AnalysisTask,
+        skill: ExecutableSkill,
+        started_at: datetime,
+        finished_at: datetime,
+        status: SkillExecutionStatus,
+        prompt_version: str,
+        llm_result: LLMStructuredResult,
+        retry_count: int,
+        error: str | None,
+    ) -> SkillExecution:
+        return SkillExecution(
+            task_id=task.task_id,
+            skill_id=skill.definition.skill_id,
+            skill_version=skill.definition.version,
+            started_at=started_at,
+            finished_at=finished_at,
+            status=status,
+            provider=llm_result.provider,
+            model=llm_result.model,
+            prompt_version=prompt_version,
+            token_usage=TokenUsage(
+                prompt_tokens=llm_result.prompt_tokens,
+                completion_tokens=llm_result.completion_tokens,
+                total_tokens=llm_result.total_tokens,
+            ),
+            latency_ms=llm_result.latency_ms,
+            retry_count=retry_count,
+            error=error,
+        )
+
+    def _failed_execution(
+        self,
+        *,
+        task: AnalysisTask,
+        skill: ExecutableSkill,
+        started_at: datetime,
+        prompt_version: str,
+        retry_count: int,
+        status: SkillExecutionStatus,
+        error: str,
+    ) -> SkillExecution:
+        return SkillExecution(
+            task_id=task.task_id,
+            skill_id=skill.definition.skill_id,
+            skill_version=skill.definition.version,
+            started_at=started_at,
+            finished_at=utc_now(),
+            status=status,
+            prompt_version=prompt_version,
+            latency_ms=None,
+            retry_count=retry_count,
+            error=error,
+        )
+
+    def _result_record(
+        self,
+        *,
+        execution: SkillExecution,
+        skill: ExecutableSkill,
+        payload: SkillResultPayload,
+        llm_result: LLMStructuredResult,
+    ) -> SkillResultRecord:
+        return SkillResultRecord(
+            execution_id=execution.execution_id,
+            skill_id=skill.definition.skill_id,
+            skill_version=skill.definition.version,
+            conclusion=payload.conclusion,
+            direction=payload.direction,
+            confidence=payload.confidence,
+            supporting_evidence_ids=payload.supporting_evidence_ids,
+            contradicting_evidence_ids=payload.contradicting_evidence_ids,
+            assumptions=payload.assumptions,
+            risk_factors=payload.risk_factors,
+            invalid_conditions=payload.invalid_conditions,
+            missing_information=payload.missing_information,
+            reasoning_summary=payload.reasoning_summary,
+            raw_output={
+                "parsed": llm_result.parsed.model_dump(mode="json"),
+                "request_id": llm_result.request_id,
+                "finish_reason": llm_result.raw_finish_reason,
+            },
+        )
