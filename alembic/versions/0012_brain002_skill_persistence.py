@@ -46,9 +46,7 @@ def upgrade() -> None:
             name="uq_skill_definitions_version",
         ),
     )
-    op.create_index(
-        "ix_skill_definitions_skill_id", "skill_definitions", ["skill_id"]
-    )
+    op.create_index("ix_skill_definitions_skill_id", "skill_definitions", ["skill_id"])
     op.create_index("ix_skill_definitions_status", "skill_definitions", ["status"])
     op.create_index(
         "ix_skill_definitions_created_at", "skill_definitions", ["created_at"]

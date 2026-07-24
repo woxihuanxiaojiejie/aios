@@ -158,8 +158,7 @@ def list_skill_results(
     task_id: str | None = None,
 ) -> SkillResultListResponse:
     executions_by_id = {
-        execution.execution_id: execution
-        for execution in storage.list(SkillExecution)
+        execution.execution_id: execution for execution in storage.list(SkillExecution)
     }
     results = storage.list(SkillResult)
     if task_id is not None:

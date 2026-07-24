@@ -3,7 +3,7 @@ from __future__ import annotations
 import builtins
 from collections.abc import Callable
 from datetime import datetime
-from typing import cast
+from typing import Any, cast
 
 from sqlalchemy import Engine, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -60,6 +60,7 @@ from aios.storage.postgres.models import (
     ResearchSettlementRecordModel,
     ReviewRecord,
     RiskReviewRecord,
+    SkillExecutionRecord,
     WatchlistItemRecord,
 )
 
@@ -158,7 +159,12 @@ class PostgresStorage:
     def list[EntityT: KernelModel](self, entity_type: type[EntityT]) -> list[EntityT]:
         model_type = model_for_entity_type(entity_type)
         id_column = id_column_for_model(model_type)
-        statement = select(model_type).order_by(model_type.created_at, id_column)
+        sort_column = (
+            SkillExecutionRecord.started_at
+            if model_type is SkillExecutionRecord
+            else cast("Any", model_type).created_at
+        )
+        statement = select(model_type).order_by(sort_column, id_column)
         session = self._session_factory()
         try:
             return [

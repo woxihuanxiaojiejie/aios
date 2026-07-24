@@ -23,6 +23,8 @@ from aios.skills.brain002 import (
 def test_real_litellm_brain002_mvp_skills_smoke() -> None:
     if os.getenv("AIOS_RUN_EXTERNAL_LLM_TESTS") != "1":
         pytest.skip("set AIOS_RUN_EXTERNAL_LLM_TESTS=1 to run external LLM smoke")
+    if os.getenv("AIOS_RUN_BRAIN002_EXTERNAL_LLM_TESTS") != "1":
+        pytest.skip("set AIOS_RUN_BRAIN002_EXTERNAL_LLM_TESTS=1 to run BRAIN-002 smoke")
     model = os.getenv("AIOS_EXTERNAL_LLM_MODEL")
     if not model:
         pytest.skip("set AIOS_EXTERNAL_LLM_MODEL to run external LLM smoke")
