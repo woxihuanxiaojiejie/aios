@@ -3,10 +3,25 @@ from __future__ import annotations
 import builtins
 from collections import defaultdict
 from collections.abc import Iterable
+from dataclasses import dataclass
+from typing import Any
 
-from aios.kernel.brain002 import SkillDefinition
+from aios.kernel.brain002 import AnalysisTask, SkillDefinition
 from aios.kernel.enums import SkillStatus
-from aios.kernel.errors import DuplicateEntityError, MissingEntityError
+from aios.kernel.errors import (
+    DuplicateEntityError,
+    MissingEntityError,
+    ReferenceIntegrityError,
+)
+from aios.kernel.evidence import Evidence
+
+
+@dataclass(frozen=True)
+class SkillSelection:
+    selected_skill_ids: tuple[str, ...]
+    rejected_skill_ids: tuple[str, ...]
+    selection_reason: dict[str, str]
+    matched_conditions: dict[str, tuple[str, ...]]
 
 
 class SkillRegistry:
@@ -156,3 +171,155 @@ class SkillRegistry:
 
     def _key(self, skill_id: str, version: str) -> tuple[str, str]:
         return skill_id, version
+
+
+class SkillSelector:
+    def __init__(self, registry: SkillRegistry) -> None:
+        self._registry = registry
+
+    def select(
+        self,
+        *,
+        task: AnalysisTask,
+        evidence: Iterable[Evidence],
+    ) -> SkillSelection:
+        point_in_time_evidence = self._point_in_time_evidence(task, evidence)
+        evidence_types = {item.evidence_type for item in point_in_time_evidence}
+        selected_skill_ids: builtins.list[str] = []
+        rejected_skill_ids: builtins.list[str] = []
+        selection_reason: dict[str, str] = {}
+        matched_conditions: dict[str, tuple[str, ...]] = {
+            "point_in_time_evidence_ids": tuple(
+                item.evidence_id for item in point_in_time_evidence
+            )
+        }
+        requested_skill_ids = set(task.requested_skill_ids)
+
+        for definition in self._active_definitions():
+            matched: builtins.list[str] = []
+            reason = self._rejection_reason(
+                definition=definition,
+                task=task,
+                evidence_types=evidence_types,
+                evidence=point_in_time_evidence,
+                requested_skill_ids=requested_skill_ids,
+                matched=matched,
+            )
+            selection_reason[definition.skill_id] = reason
+            matched_conditions[definition.skill_id] = tuple(matched)
+            if reason == "selected":
+                selected_skill_ids.append(definition.skill_id)
+            else:
+                rejected_skill_ids.append(definition.skill_id)
+
+        return SkillSelection(
+            selected_skill_ids=tuple(selected_skill_ids),
+            rejected_skill_ids=tuple(rejected_skill_ids),
+            selection_reason=selection_reason,
+            matched_conditions=matched_conditions,
+        )
+
+    def _point_in_time_evidence(
+        self,
+        task: AnalysisTask,
+        evidence: Iterable[Evidence],
+    ) -> tuple[Evidence, ...]:
+        evidence_by_id = {item.evidence_id: item for item in evidence}
+        if task.evidence_ids:
+            missing_ids = [
+                evidence_id
+                for evidence_id in task.evidence_ids
+                if evidence_id not in evidence_by_id
+            ]
+            if missing_ids:
+                msg = f"AnalysisTask references missing Evidence IDs: {missing_ids}"
+                raise ReferenceIntegrityError(msg)
+            ordered_evidence = [
+                evidence_by_id[evidence_id] for evidence_id in task.evidence_ids
+            ]
+        else:
+            ordered_evidence = list(evidence_by_id.values())
+        return tuple(
+            item for item in ordered_evidence if item.available_at <= task.as_of
+        )
+
+    def _active_definitions(self) -> tuple[SkillDefinition, ...]:
+        active_definitions: builtins.list[SkillDefinition] = []
+        seen_skill_ids: set[str] = set()
+        for definition in self._registry.list():
+            if definition.skill_id in seen_skill_ids:
+                continue
+            seen_skill_ids.add(definition.skill_id)
+            try:
+                active_definitions.append(
+                    self._registry.get_active_version(definition.skill_id)
+                )
+            except MissingEntityError:
+                if definition.status is SkillStatus.DISABLED:
+                    active_definitions.append(definition)
+        return tuple(active_definitions)
+
+    def _rejection_reason(
+        self,
+        *,
+        definition: SkillDefinition,
+        task: AnalysisTask,
+        evidence_types: set[str],
+        evidence: tuple[Evidence, ...],
+        requested_skill_ids: set[str],
+        matched: builtins.list[str],
+    ) -> str:
+        if definition.status is not SkillStatus.ENABLED:
+            return "disabled"
+        if requested_skill_ids and definition.skill_id not in requested_skill_ids:
+            return "not_requested"
+        if task.market not in definition.supported_markets:
+            return "market_not_supported"
+        matched.append("market")
+        if task.asset_type not in definition.supported_asset_types:
+            return "asset_type_not_supported"
+        matched.append("asset_type")
+        if task.horizon not in definition.supported_horizons:
+            return "horizon_not_supported"
+        matched.append("horizon")
+        if not set(definition.required_evidence_types).issubset(evidence_types):
+            return "missing_evidence_type"
+        matched.append("evidence_type")
+        if not self._dependencies_active(definition):
+            return "missing_dependency"
+        if not self._trigger_conditions_match(definition.trigger_conditions, evidence):
+            return "trigger_not_matched"
+        if definition.trigger_conditions:
+            matched.append("trigger_conditions")
+        return "selected"
+
+    def _trigger_conditions_match(
+        self,
+        trigger_conditions: dict[str, Any],
+        evidence: tuple[Evidence, ...],
+    ) -> bool:
+        metadata_equals = trigger_conditions.get("metadata_equals")
+        if metadata_equals is None:
+            return True
+        if not isinstance(metadata_equals, dict):
+            return False
+        return any(
+            all(
+                item.metadata.get(key) == value
+                for key, value in metadata_equals.items()
+            )
+            for item in evidence
+        )
+
+    def _dependencies_active(self, definition: SkillDefinition) -> bool:
+        return all(
+            self._dependency_active(dependency_id)
+            for dependency_id in definition.dependencies
+        )
+
+    def _dependency_active(self, skill_id: str) -> bool:
+        try:
+            active = self._registry.get_active_version(skill_id)
+            return active.status is SkillStatus.ENABLED
+        except MissingEntityError:
+            return False
