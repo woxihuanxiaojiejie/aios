@@ -194,3 +194,38 @@ class AnnouncementRiskSkill(PromptSkill):
                 "invalid_conditions, and missing_information."
             ),
         )
+
+
+class MarketSentimentSkill(PromptSkill):
+    def __init__(self) -> None:
+        super().__init__(
+            definition=SkillDefinition(
+                skill_id="market_sentiment",
+                name="Market Sentiment",
+                version="1.0.0",
+                description=(
+                    "Independent analysis of market risk appetite, breadth, "
+                    "defensive/offensive direction, sentiment phase, and liquidity."
+                ),
+                supported_markets=SUPPORTED_MARKETS,
+                supported_asset_types=SUPPORTED_ASSET_TYPES,
+                supported_horizons=SUPPORTED_HORIZONS,
+                required_evidence_types=("market_sentiment_snapshot",),
+                input_schema=SkillInput.model_json_schema(),
+                output_schema=SkillResultPayload.model_json_schema(),
+            ),
+            prompt_version="market_sentiment_v1",
+            system_prompt=(
+                "You are the market_sentiment skill. Analyze only market risk "
+                "appetite, advancing/declining breadth, defensive versus offensive "
+                "direction, sentiment phase, and liquidity environment. Do not "
+                "replace technical trend analysis, policy impact analysis, company "
+                "announcement analysis, final decision fusion, position sizing, "
+                "orders, take-profit, or stop-loss. Return structured JSON matching "
+                "the SkillResultPayload schema. Use direction only as bullish, "
+                "bearish, neutral, or uncertain. Confidence must be a number from "
+                "0 to 1. Every non-uncertain conclusion must cite at least one "
+                "supporting_evidence_id. Always include risk_factors, "
+                "invalid_conditions, and missing_information."
+            ),
+        )

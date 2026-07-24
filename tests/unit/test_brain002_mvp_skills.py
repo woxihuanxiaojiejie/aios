@@ -5,6 +5,7 @@ from aios.kernel.brain002 import SkillResultPayload
 from aios.kernel.evidence import Evidence
 from aios.skills.brain002 import (
     AnnouncementRiskSkill,
+    MarketSentimentSkill,
     PolicyImpactSkill,
     SectorStrengthSkill,
     TechnicalTrendSkill,
@@ -148,3 +149,31 @@ def test_announcement_risk_skill_definition_and_prompt_are_isolated() -> None:
     assert "Do not analyze price trend" in prompt.system_prompt
     assert "ev_announcement" in prompt.user_prompt
     assert "reduce holdings" in prompt.user_prompt
+
+
+def test_market_sentiment_skill_definition_and_prompt_are_isolated() -> None:
+    skill = MarketSentimentSkill()
+    input_payload = SkillInput(
+        **{
+            **skill_input().model_dump(),
+            "evidence": (
+                evidence(
+                    "ev_sentiment",
+                    "market_sentiment_snapshot",
+                    "Risk appetite improves with broad advancing issues.",
+                ),
+            ),
+        }
+    )
+
+    prompt = skill.build_prompt(input_payload)
+
+    assert skill.definition.skill_id == "market_sentiment"
+    assert skill.definition.required_evidence_types == ("market_sentiment_snapshot",)
+    assert skill.response_schema is SkillResultPayload
+    assert skill.prompt_version == "market_sentiment_v1"
+    assert "risk appetite" in prompt.system_prompt
+    assert "liquidity environment" in prompt.system_prompt
+    assert "Do not replace technical trend analysis" in prompt.system_prompt
+    assert "ev_sentiment" in prompt.user_prompt
+    assert "Risk appetite improves" in prompt.user_prompt
