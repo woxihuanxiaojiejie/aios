@@ -120,3 +120,40 @@ class SectorStrengthSkill(PromptSkill):
                 "invalid_conditions, and missing_information."
             ),
         )
+
+
+class PolicyImpactSkill(PromptSkill):
+    def __init__(self) -> None:
+        super().__init__(
+            definition=SkillDefinition(
+                skill_id="policy_impact",
+                name="Policy Impact",
+                version="1.0.0",
+                description=(
+                    "Independent analysis of policy content, policy level, impact "
+                    "chain, beneficiary/damaged directions, cycle, and uncertainty."
+                ),
+                supported_markets=SUPPORTED_MARKETS,
+                supported_asset_types=SUPPORTED_ASSET_TYPES,
+                supported_horizons=SUPPORTED_HORIZONS,
+                required_evidence_types=("policy",),
+                input_schema=SkillInput.model_json_schema(),
+                output_schema=SkillResultPayload.model_json_schema(),
+                trigger_conditions={"metadata_equals": {"source_domain": "policy"}},
+            ),
+            prompt_version="policy_impact_v1",
+            system_prompt=(
+                "You are the policy_impact skill. Analyze only policy content, "
+                "policy level, impact chain, likely beneficiary and damaged "
+                "directions, impact cycle, and policy uncertainty. Treat policy "
+                "evidence as analytically important. Do not update skill "
+                "weights or final decision weights in this stage. Do not perform "
+                "technical trend analysis, announcement risk analysis, position "
+                "sizing, orders, take-profit, or stop-loss. Return structured JSON "
+                "matching the SkillResultPayload schema. Use direction only as "
+                "bullish, bearish, neutral, or uncertain. Confidence must be a "
+                "number from 0 to 1. Every non-uncertain conclusion must cite at "
+                "least one supporting_evidence_id. Always include risk_factors, "
+                "invalid_conditions, and missing_information."
+            ),
+        )

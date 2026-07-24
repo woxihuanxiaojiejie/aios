@@ -3,7 +3,11 @@ from datetime import UTC, datetime, timedelta
 from aios.application.brain002 import SkillInput
 from aios.kernel.brain002 import SkillResultPayload
 from aios.kernel.evidence import Evidence
-from aios.skills.brain002 import SectorStrengthSkill, TechnicalTrendSkill
+from aios.skills.brain002 import (
+    PolicyImpactSkill,
+    SectorStrengthSkill,
+    TechnicalTrendSkill,
+)
 
 
 def now() -> datetime:
@@ -87,3 +91,31 @@ def test_sector_strength_skill_definition_and_prompt_are_isolated() -> None:
     )
     assert "ev_sector" in prompt.user_prompt
     assert "Semiconductors outperform broad market." in prompt.user_prompt
+
+
+def test_policy_impact_skill_definition_and_prompt_are_isolated() -> None:
+    skill = PolicyImpactSkill()
+    input_payload = SkillInput(
+        **{
+            **skill_input().model_dump(),
+            "evidence": (
+                evidence(
+                    "ev_policy",
+                    "policy",
+                    "National subsidy policy for renewable power equipment.",
+                ),
+            ),
+        }
+    )
+
+    prompt = skill.build_prompt(input_payload)
+
+    assert skill.definition.skill_id == "policy_impact"
+    assert skill.definition.required_evidence_types == ("policy",)
+    assert skill.response_schema is SkillResultPayload
+    assert skill.prompt_version == "policy_impact_v1"
+    assert "policy level" in prompt.system_prompt
+    assert "impact chain" in prompt.system_prompt
+    assert "Do not update skill weights" in prompt.system_prompt
+    assert "ev_policy" in prompt.user_prompt
+    assert "National subsidy policy" in prompt.user_prompt
