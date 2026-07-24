@@ -130,3 +130,24 @@ class RiskVerdict(StrEnum):
     APPROVE = "approve"
     DOWNGRADE = "downgrade"
     VETO = "veto"
+
+
+class SkillStatus(StrEnum):
+    ENABLED = "enabled"
+    DISABLED = "disabled"
+    DEPRECATED = "deprecated"
+
+
+class SkillExecutionStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    TIMED_OUT = "timed_out"
+
+
+class SkillDirection(StrEnum):
+    BULLISH = "bullish"
+    BEARISH = "bearish"
+    NEUTRAL = "neutral"
+    UNCERTAIN = "uncertain"
