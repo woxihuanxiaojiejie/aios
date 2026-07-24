@@ -12,6 +12,7 @@ from aios.adapters.storage import Storage
 from aios.adapters.vibe_trading import VibeTradingResearchAdapter
 from aios.api.errors import add_exception_handlers
 from aios.api.routes import (
+    brain002,
     brain_evidence,
     decision_generation,
     decisions,
@@ -65,12 +66,14 @@ def create_app(
         resolved_storage
     )
     app.state.vibe_trading_adapter = vibe_trading_adapter or VibeTradingAdapter()
+    app.state.brain002_registry = brain002.default_brain002_registry()
     add_exception_handlers(app)
 
     app.include_router(health.router)
     app.include_router(health.router, prefix="/api/v1")
     app.include_router(evidence.router, prefix="/api/v1")
     app.include_router(brain_evidence.router, prefix="/api/v1")
+    app.include_router(brain002.router, prefix="/api/v1")
     app.include_router(experiments.router, prefix="/api/v1")
     app.include_router(decisions.router, prefix="/api/v1")
     app.include_router(reviews.router, prefix="/api/v1")

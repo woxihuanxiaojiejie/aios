@@ -387,5 +387,7 @@ class InMemoryStorage:
             raise UnsupportedEntityError(msg)
 
     def _sort_key(self, entity: KernelModel) -> tuple[datetime, str]:
+        if isinstance(entity, SkillExecution):
+            return entity.started_at, entity.entity_id
         sortable = cast("_CreatedEntity", entity)
         return sortable.created_at, sortable.entity_id

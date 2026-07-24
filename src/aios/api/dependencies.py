@@ -8,6 +8,7 @@ from aios.adapters.llm import LLMAdapter
 from aios.adapters.market_data import MarketDataAdapter
 from aios.adapters.storage import Storage
 from aios.adapters.vibe_trading import VibeTradingResearchAdapter
+from aios.application.brain002 import SkillRegistry
 from aios.application.decision_generation import GenerationRecorder
 from aios.storage.postgres.evidence_repository import EvidenceRepository
 from aios.workflows.decision_lifecycle import DecisionLifecycleService
@@ -44,6 +45,10 @@ def get_brain_evidence_repository(request: Request) -> EvidenceRepository | None
     )
 
 
+def get_brain002_registry(request: Request) -> SkillRegistry:
+    return cast("SkillRegistry", request.app.state.brain002_registry)
+
+
 def get_lifecycle(
     storage: Annotated[Storage, Depends(get_storage)],
 ) -> DecisionLifecycleService:
@@ -60,6 +65,8 @@ BaoStockMarketDataAdapterDep = Annotated[
     Depends(get_baostock_market_data_adapter),
 ]
 LLMAdapterDep = Annotated[LLMAdapter, Depends(get_llm_adapter)]
+StorageDep = Annotated[Storage, Depends(get_storage)]
+Brain002RegistryDep = Annotated[SkillRegistry, Depends(get_brain002_registry)]
 GenerationRecorderDep = Annotated[
     GenerationRecorder | None,
     Depends(get_generation_recorder),
