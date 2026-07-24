@@ -6,6 +6,12 @@ from datetime import datetime
 from typing import Protocol, cast
 
 from aios.kernel.base import KernelModel
+from aios.kernel.brain002 import (
+    AnalysisTask,
+    SkillDefinition,
+    SkillExecution,
+    SkillResult,
+)
 from aios.kernel.debate import (
     DebateRecord,
     DebateStatement,
@@ -59,6 +65,10 @@ SUPPORTED_ENTITY_TYPES = (
     DecisionAssemblyRecord,
     ResearchSettlementRecord,
     ResearchRun,
+    SkillDefinition,
+    AnalysisTask,
+    SkillExecution,
+    SkillResult,
 )
 
 

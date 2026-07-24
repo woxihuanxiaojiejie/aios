@@ -30,8 +30,9 @@ class TokenUsage(BaseModel):
 
 
 class SkillDefinition(KernelModel):
-    id_field: ClassVar[str] = "skill_id"
+    id_field: ClassVar[str] = "definition_id"
 
+    definition_id: str = Field(default_factory=lambda: new_id("sd_"))
     skill_id: str = Field(min_length=1)
     name: str = Field(min_length=1)
     version: str = Field(min_length=1)
@@ -49,7 +50,7 @@ class SkillDefinition(KernelModel):
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
 
-    @field_validator("skill_id", "name", "version", "description")
+    @field_validator("definition_id", "skill_id", "name", "version", "description")
     @classmethod
     def normalize_required_text(cls, value: str) -> str:
         normalized = value.strip()

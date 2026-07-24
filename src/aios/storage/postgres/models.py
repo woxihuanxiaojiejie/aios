@@ -97,6 +97,126 @@ class BrainEvidenceRecord(Base):
     )
 
 
+class SkillDefinitionRecord(Base):
+    __tablename__ = "skill_definitions"
+    __table_args__ = (
+        UniqueConstraint("skill_id", "version", name="uq_skill_definitions_version"),
+        Index("ix_skill_definitions_skill_id", "skill_id"),
+        Index("ix_skill_definitions_status", "status"),
+        Index("ix_skill_definitions_created_at", "created_at"),
+    )
+
+    definition_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    skill_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    version: Mapped[str] = mapped_column(String(64), nullable=False)
+    description: Mapped[str] = mapped_column(String, nullable=False)
+    supported_markets: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    supported_asset_types: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    supported_horizons: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    required_evidence_types: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    input_schema: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    output_schema: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    trigger_conditions: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    dependencies: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    conflicts: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class AnalysisTaskRecord(Base):
+    __tablename__ = "analysis_tasks"
+    __table_args__ = (
+        Index("ix_analysis_tasks_symbol", "symbol"),
+        Index("ix_analysis_tasks_market", "market"),
+        Index("ix_analysis_tasks_as_of", "as_of"),
+        Index("ix_analysis_tasks_created_at", "created_at"),
+    )
+
+    task_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    symbol: Mapped[str] = mapped_column(String(64), nullable=False)
+    market: Mapped[str] = mapped_column(String(64), nullable=False)
+    asset_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    horizon: Mapped[str] = mapped_column(String(64), nullable=False)
+    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    evidence_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    user_constraints: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    requested_skill_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class SkillExecutionRecord(Base):
+    __tablename__ = "skill_executions"
+    __table_args__ = (
+        CheckConstraint(
+            "finished_at is null or finished_at >= started_at",
+            "ck_skill_executions_finished_at",
+        ),
+        CheckConstraint("latency_ms is null or latency_ms >= 0"),
+        CheckConstraint("retry_count >= 0"),
+        Index("ix_skill_executions_task_id", "task_id"),
+        Index("ix_skill_executions_skill_id", "skill_id"),
+        Index("ix_skill_executions_status", "status"),
+        Index("ix_skill_executions_started_at", "started_at"),
+    )
+
+    execution_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    task_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    skill_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    skill_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(64))
+    model: Mapped[str | None] = mapped_column(String(255))
+    prompt_version: Mapped[str | None] = mapped_column(String(128))
+    token_usage: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    error: Mapped[str | None] = mapped_column(String)
+
+
+class SkillResultRecord(Base):
+    __tablename__ = "skill_results"
+    __table_args__ = (
+        CheckConstraint(
+            "confidence >= 0 and confidence <= 1", "ck_skill_results_confidence"
+        ),
+        Index("ix_skill_results_execution_id", "execution_id"),
+        Index("ix_skill_results_skill_id", "skill_id"),
+        Index("ix_skill_results_direction", "direction"),
+        Index("ix_skill_results_created_at", "created_at"),
+    )
+
+    result_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    execution_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    skill_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    skill_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    conclusion: Mapped[str] = mapped_column(String, nullable=False)
+    direction: Mapped[str] = mapped_column(String(32), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    supporting_evidence_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    contradicting_evidence_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    assumptions: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    risk_factors: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    invalid_conditions: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    missing_information: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    reasoning_summary: Mapped[str] = mapped_column(String, nullable=False)
+    raw_output: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
 class ExperimentRecord(Base):
     __tablename__ = "experiments"
     __table_args__ = (

@@ -6,6 +6,13 @@ from typing import Any, cast
 from sqlalchemy.orm import DeclarativeBase
 
 from aios.kernel.base import KernelModel, ensure_utc
+from aios.kernel.brain002 import (
+    AnalysisTask,
+    SkillDefinition,
+    SkillExecution,
+    SkillResult,
+    TokenUsage,
+)
 from aios.kernel.debate import (
     DebateRecord,
     DebateStatement,
@@ -34,6 +41,9 @@ from aios.kernel.enums import (
     ReturnResult,
     RiskResult,
     RiskVerdict,
+    SkillDirection,
+    SkillExecutionStatus,
+    SkillStatus,
     WatchlistStatus,
 )
 from aios.kernel.errors import UnsupportedEntityError
@@ -53,6 +63,7 @@ from aios.kernel.watchlist import WatchlistItem
 from aios.storage.postgres.models import (
     AgentReportEvidenceRecord,
     AgentReportRecord,
+    AnalysisTaskRecord,
     DebateRecordModel,
     DebateStatementRecord,
     DecisionAssemblyRecordModel,
@@ -72,6 +83,9 @@ from aios.storage.postgres.models import (
     ResearchSettlementRecordModel,
     ReviewRecord,
     RiskReviewRecord,
+    SkillDefinitionRecord,
+    SkillExecutionRecord,
+    SkillResultRecord,
     WatchlistItemRecord,
 )
 
@@ -95,10 +109,83 @@ type Record = (
     | DecisionAssemblyRecordModel
     | ResearchSettlementRecordModel
     | ResearchRunRecord
+    | SkillDefinitionRecord
+    | AnalysisTaskRecord
+    | SkillExecutionRecord
+    | SkillResultRecord
 )
 
 
 def to_model(entity: KernelModel) -> Record:
+    if isinstance(entity, SkillDefinition):
+        return SkillDefinitionRecord(
+            definition_id=entity.definition_id,
+            skill_id=entity.skill_id,
+            name=entity.name,
+            version=entity.version,
+            description=entity.description,
+            supported_markets=list(entity.supported_markets),
+            supported_asset_types=list(entity.supported_asset_types),
+            supported_horizons=list(entity.supported_horizons),
+            required_evidence_types=list(entity.required_evidence_types),
+            input_schema=entity.input_schema,
+            output_schema=entity.output_schema,
+            trigger_conditions=entity.trigger_conditions,
+            dependencies=list(entity.dependencies),
+            conflicts=list(entity.conflicts),
+            status=entity.status.value,
+            created_at=entity.created_at,
+            updated_at=entity.updated_at,
+        )
+    if isinstance(entity, AnalysisTask):
+        return AnalysisTaskRecord(
+            task_id=entity.task_id,
+            symbol=entity.symbol,
+            market=entity.market,
+            asset_type=entity.asset_type,
+            horizon=entity.horizon,
+            as_of=entity.as_of,
+            evidence_ids=list(entity.evidence_ids),
+            user_constraints=entity.user_constraints,
+            requested_skill_ids=list(entity.requested_skill_ids),
+            created_at=entity.created_at,
+        )
+    if isinstance(entity, SkillExecution):
+        return SkillExecutionRecord(
+            execution_id=entity.execution_id,
+            task_id=entity.task_id,
+            skill_id=entity.skill_id,
+            skill_version=entity.skill_version,
+            started_at=entity.started_at,
+            finished_at=entity.finished_at,
+            status=entity.status.value,
+            provider=entity.provider,
+            model=entity.model,
+            prompt_version=entity.prompt_version,
+            token_usage=entity.token_usage.model_dump(mode="json"),
+            latency_ms=entity.latency_ms,
+            retry_count=entity.retry_count,
+            error=entity.error,
+        )
+    if isinstance(entity, SkillResult):
+        return SkillResultRecord(
+            result_id=entity.result_id,
+            execution_id=entity.execution_id,
+            skill_id=entity.skill_id,
+            skill_version=entity.skill_version,
+            conclusion=entity.conclusion,
+            direction=entity.direction.value,
+            confidence=entity.confidence,
+            supporting_evidence_ids=list(entity.supporting_evidence_ids),
+            contradicting_evidence_ids=list(entity.contradicting_evidence_ids),
+            assumptions=list(entity.assumptions),
+            risk_factors=list(entity.risk_factors),
+            invalid_conditions=list(entity.invalid_conditions),
+            missing_information=list(entity.missing_information),
+            reasoning_summary=entity.reasoning_summary,
+            raw_output=entity.raw_output,
+            created_at=entity.created_at,
+        )
     if isinstance(entity, Evidence):
         return EvidenceRecord(
             evidence_id=entity.evidence_id,
@@ -391,6 +478,75 @@ def to_model(entity: KernelModel) -> Record:
 
 
 def model_to_entity(model: DeclarativeBase) -> KernelModel:
+    if isinstance(model, SkillDefinitionRecord):
+        return SkillDefinition(
+            definition_id=model.definition_id,
+            skill_id=model.skill_id,
+            name=model.name,
+            version=model.version,
+            description=model.description,
+            supported_markets=tuple(model.supported_markets),
+            supported_asset_types=tuple(model.supported_asset_types),
+            supported_horizons=tuple(model.supported_horizons),
+            required_evidence_types=tuple(model.required_evidence_types),
+            input_schema=model.input_schema,
+            output_schema=model.output_schema,
+            trigger_conditions=model.trigger_conditions,
+            dependencies=tuple(model.dependencies),
+            conflicts=tuple(model.conflicts),
+            status=SkillStatus(model.status),
+            created_at=_utc(model.created_at),
+            updated_at=_utc(model.updated_at),
+        )
+    if isinstance(model, AnalysisTaskRecord):
+        return AnalysisTask(
+            task_id=model.task_id,
+            symbol=model.symbol,
+            market=model.market,
+            asset_type=model.asset_type,
+            horizon=model.horizon,
+            as_of=_utc(model.as_of),
+            evidence_ids=tuple(model.evidence_ids),
+            user_constraints=model.user_constraints,
+            requested_skill_ids=tuple(model.requested_skill_ids),
+            created_at=_utc(model.created_at),
+        )
+    if isinstance(model, SkillExecutionRecord):
+        return SkillExecution(
+            execution_id=model.execution_id,
+            task_id=model.task_id,
+            skill_id=model.skill_id,
+            skill_version=model.skill_version,
+            started_at=_utc(model.started_at),
+            finished_at=_utc(model.finished_at) if model.finished_at else None,
+            status=SkillExecutionStatus(model.status),
+            provider=model.provider,
+            model=model.model,
+            prompt_version=model.prompt_version,
+            token_usage=TokenUsage.model_validate(model.token_usage),
+            latency_ms=model.latency_ms,
+            retry_count=model.retry_count,
+            error=model.error,
+        )
+    if isinstance(model, SkillResultRecord):
+        return SkillResult(
+            result_id=model.result_id,
+            execution_id=model.execution_id,
+            skill_id=model.skill_id,
+            skill_version=model.skill_version,
+            conclusion=model.conclusion,
+            direction=SkillDirection(model.direction),
+            confidence=model.confidence,
+            supporting_evidence_ids=tuple(model.supporting_evidence_ids),
+            contradicting_evidence_ids=tuple(model.contradicting_evidence_ids),
+            assumptions=tuple(model.assumptions),
+            risk_factors=tuple(model.risk_factors),
+            invalid_conditions=tuple(model.invalid_conditions),
+            missing_information=tuple(model.missing_information),
+            reasoning_summary=model.reasoning_summary,
+            raw_output=model.raw_output,
+            created_at=_utc(model.created_at),
+        )
     if isinstance(model, EvidenceRecord):
         return Evidence(
             evidence_id=model.evidence_id,
@@ -659,6 +815,14 @@ def model_to_entity(model: DeclarativeBase) -> KernelModel:
 
 
 def model_for_entity_type(entity_type: type[KernelModel]) -> type[Record]:
+    if entity_type is SkillDefinition:
+        return SkillDefinitionRecord
+    if entity_type is AnalysisTask:
+        return AnalysisTaskRecord
+    if entity_type is SkillExecution:
+        return SkillExecutionRecord
+    if entity_type is SkillResult:
+        return SkillResultRecord
     if entity_type is Evidence:
         return EvidenceRecord
     if entity_type is Experiment:
@@ -700,6 +864,14 @@ def model_for_entity_type(entity_type: type[KernelModel]) -> type[Record]:
 
 
 def id_column_for_model(model_type: type[Record]) -> Any:
+    if model_type is SkillDefinitionRecord:
+        return SkillDefinitionRecord.definition_id
+    if model_type is AnalysisTaskRecord:
+        return AnalysisTaskRecord.task_id
+    if model_type is SkillExecutionRecord:
+        return SkillExecutionRecord.execution_id
+    if model_type is SkillResultRecord:
+        return SkillResultRecord.result_id
     if model_type is EvidenceRecord:
         return EvidenceRecord.evidence_id
     if model_type is ExperimentRecord:
