@@ -4,6 +4,7 @@ from aios.application.brain002 import SkillInput
 from aios.kernel.brain002 import SkillResultPayload
 from aios.kernel.evidence import Evidence
 from aios.skills.brain002 import (
+    AnnouncementRiskSkill,
     PolicyImpactSkill,
     SectorStrengthSkill,
     TechnicalTrendSkill,
@@ -119,3 +120,31 @@ def test_policy_impact_skill_definition_and_prompt_are_isolated() -> None:
     assert "Do not update skill weights" in prompt.system_prompt
     assert "ev_policy" in prompt.user_prompt
     assert "National subsidy policy" in prompt.user_prompt
+
+
+def test_announcement_risk_skill_definition_and_prompt_are_isolated() -> None:
+    skill = AnnouncementRiskSkill()
+    input_payload = SkillInput(
+        **{
+            **skill_input().model_dump(),
+            "evidence": (
+                evidence(
+                    "ev_announcement",
+                    "company_announcement",
+                    "Controlling shareholder plans to reduce holdings.",
+                ),
+            ),
+        }
+    )
+
+    prompt = skill.build_prompt(input_payload)
+
+    assert skill.definition.skill_id == "announcement_risk"
+    assert skill.definition.required_evidence_types == ("company_announcement",)
+    assert skill.response_schema is SkillResultPayload
+    assert skill.prompt_version == "announcement_risk_v1"
+    assert "financial and governance risk" in prompt.system_prompt
+    assert "Distinguish facts from speculation" in prompt.system_prompt
+    assert "Do not analyze price trend" in prompt.system_prompt
+    assert "ev_announcement" in prompt.user_prompt
+    assert "reduce holdings" in prompt.user_prompt
