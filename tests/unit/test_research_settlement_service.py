@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from typing import Any
 
 import pytest
+from pydantic import BaseModel
 from tests.factories import (
     make_agent_report,
     make_evidence,
@@ -12,9 +14,11 @@ from tests.factories import (
     make_watchlist_item,
 )
 
+from aios.adapters.llm import LLMStructuredResult
 from aios.adapters.market_data import Adjustment, MarketBar
 from aios.application.debate import DebateService
 from aios.application.research_settlement import ResearchSettlementService
+from aios.kernel.base import KernelModel
 from aios.kernel.decision import Decision
 from aios.kernel.enums import (
     ApprovalStatus,
@@ -51,6 +55,74 @@ class FixtureMarketDataAdapter:
         ]
 
 
+class LearningAdvisorLLM:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def generate_structured(
+        self,
+        *,
+        model: str,
+        system_prompt: str,
+        user_prompt: str,
+        response_schema: type[BaseModel],
+        temperature: float,
+    ) -> LLMStructuredResult:
+        self.calls.append(
+            {
+                "model": model,
+                "system_prompt": system_prompt,
+                "user_prompt": user_prompt,
+                "response_schema": response_schema,
+                "temperature": temperature,
+            }
+        )
+        parsed = response_schema.model_validate(
+            {
+                "cause_summary": "Technical thesis was confirmed by realized return.",
+                "evidence_references": ["ev_00000000-0000-0000-0000-000000000001"],
+                "report_references": ["ar_00000000-0000-0000-0000-000000000001"],
+                "skill_weight_adjustments": [
+                    {
+                        "skill_id": "manual",
+                        "report_id": "ar_00000000-0000-0000-0000-000000000001",
+                        "delta": "0.50",
+                        "reason": "Confirmed report should receive a small boost.",
+                    }
+                ],
+                "learning_recommendations": [
+                    "Keep the technical report slightly stronger after approval."
+                ],
+            }
+        )
+        return LLMStructuredResult(
+            parsed=parsed,
+            provider="fake",
+            model=model,
+            request_id="brain005_fake_request",
+            prompt_tokens=100,
+            completion_tokens=30,
+            total_tokens=130,
+            extracted_payload=parsed.model_dump(mode="json"),
+            latency_ms=10,
+            raw_finish_reason="stop",
+        )
+
+
+class FailOnceLearningStorage(InMemoryStorage):
+    def __init__(self) -> None:
+        super().__init__()
+        self.learning_saves = 0
+        self.fail_on_learning_save = True
+
+    def save(self, entity: KernelModel) -> None:
+        if isinstance(entity, Learning):
+            self.learning_saves += 1
+            if self.fail_on_learning_save and self.learning_saves == 2:
+                raise RuntimeError("transient learning save failure")
+        super().save(entity)
+
+
 def market_bar(trade_date: date, close: str, *, symbol: str = "600519") -> MarketBar:
     price = Decimal(close)
     return MarketBar(
@@ -70,7 +142,12 @@ def market_bar(trade_date: date, close: str, *, symbol: str = "600519") -> Marke
 
 
 def seed_finalized_research_decision() -> tuple[InMemoryStorage, str, Decision]:
-    storage = InMemoryStorage()
+    return seed_finalized_research_decision_with_storage(InMemoryStorage())
+
+
+def seed_finalized_research_decision_with_storage(
+    storage: InMemoryStorage,
+) -> tuple[InMemoryStorage, str, Decision]:
     evidence = make_evidence().model_copy(update={"symbols": ("600519",)})
     watchlist = make_watchlist_item()
     session = make_research_session(
@@ -176,6 +253,189 @@ def test_research_settlement_links_existing_lifecycle_and_proposes_learning() ->
         learning.approval_status is ApprovalStatus.PENDING
         for learning in result.learnings
     )
+    weight_learning = next(
+        learning
+        for learning in result.learnings
+        if learning.learning_type is LearningType.AGENT_WEIGHT_UPDATE
+    )
+    assert weight_learning.after["application_mode"] == "proposal_only"
+    assert weight_learning.after["status"] == "pending_approval"
+    assert weight_learning.after["source_refs"]["evidence_ids"] == list(
+        result.record.evidence_ids
+    )
+    assert weight_learning.after["skill_weight_adjustments"] == [
+        {
+            "skill_id": "manual",
+            "report_id": "ar_00000000-0000-0000-0000-000000000001",
+            "delta": "0.02",
+            "reason": (
+                "settlement passed; supported report is eligible for a small increase"
+            ),
+        }
+    ]
+
+
+def test_research_settlement_scans_due_unsettled_assemblies_idempotently() -> None:
+    storage, assembly_id, decision = seed_finalized_research_decision()
+    adapter = FixtureMarketDataAdapter(
+        [
+            market_bar(decision.created_at.date(), "10.00"),
+            market_bar(decision.valid_until.date() + timedelta(days=1), "10.50"),
+        ]
+    )
+    service = ResearchSettlementService(
+        lifecycle=DecisionLifecycleService(storage),
+        market_data_adapter=adapter,
+    )
+
+    early = service.settle_due(as_of=decision.valid_until - timedelta(seconds=1))
+    first = service.settle_due(as_of=decision.valid_until + timedelta(days=1))
+    second = service.settle_due(as_of=decision.valid_until + timedelta(days=2))
+
+    assert early == ()
+    assert len(first) == 1
+    assert first[0].record.assembly_id == assembly_id
+    assert second == ()
+    assert adapter.calls == 1
+    assert len(storage.list(DecisionOutcome)) == 1
+    assert len(storage.list(DecisionEvaluation)) == 1
+    assert len(storage.list(Learning)) == 2
+
+
+def test_research_settlement_uses_llm_only_for_learning_advice() -> None:
+    storage, assembly_id, decision = seed_finalized_research_decision()
+    llm = LearningAdvisorLLM()
+    service = ResearchSettlementService(
+        lifecycle=DecisionLifecycleService(storage),
+        market_data_adapter=FixtureMarketDataAdapter(
+            [
+                market_bar(decision.created_at.date(), "10.00"),
+                market_bar(decision.valid_until.date() + timedelta(days=1), "10.50"),
+            ]
+        ),
+        llm_adapter=llm,
+        llm_model="deepseek/deepseek-chat",
+    )
+
+    result = service.settle_assembly(
+        assembly_id=assembly_id,
+        as_of=decision.valid_until + timedelta(days=1),
+    )
+    repeated = service.settle_assembly(
+        assembly_id=assembly_id,
+        as_of=decision.valid_until + timedelta(days=2),
+    )
+
+    assert repeated.record == result.record
+    assert len(llm.calls) == 1
+    assert llm.calls[0]["temperature"] == 0
+    weight_learning = next(
+        learning
+        for learning in result.learnings
+        if learning.learning_type is LearningType.AGENT_WEIGHT_UPDATE
+    )
+    assert weight_learning.after["llm_cause_summary"] == (
+        "Technical thesis was confirmed by realized return."
+    )
+    assert weight_learning.after["llm_evidence_references"] == [
+        "ev_00000000-0000-0000-0000-000000000001"
+    ]
+    assert weight_learning.after["llm_report_references"] == [
+        "ar_00000000-0000-0000-0000-000000000001"
+    ]
+    assert weight_learning.after["llm_audit"] == {
+        "provider": "fake",
+        "model": "deepseek/deepseek-chat",
+        "request_id": "brain005_fake_request",
+        "prompt_tokens": 100,
+        "completion_tokens": 30,
+        "total_tokens": 130,
+        "latency_ms": 10,
+        "raw_finish_reason": "stop",
+        "extracted_payload": {
+            "cause_summary": "Technical thesis was confirmed by realized return.",
+            "evidence_references": ["ev_00000000-0000-0000-0000-000000000001"],
+            "report_references": ["ar_00000000-0000-0000-0000-000000000001"],
+            "skill_weight_adjustments": [
+                {
+                    "skill_id": "manual",
+                    "report_id": "ar_00000000-0000-0000-0000-000000000001",
+                    "delta": "0.50",
+                    "reason": "Confirmed report should receive a small boost.",
+                }
+            ],
+            "learning_recommendations": [
+                "Keep the technical report slightly stronger after approval."
+            ],
+        },
+    }
+    assert weight_learning.after["skill_weight_adjustments"] == [
+        {
+            "skill_id": "manual",
+            "report_id": "ar_00000000-0000-0000-0000-000000000001",
+            "delta": "0.05",
+            "reason": "Confirmed report should receive a small boost.",
+        }
+    ]
+
+
+def test_research_settlement_completes_insufficient_data_as_inconclusive() -> None:
+    storage, assembly_id, decision = seed_finalized_research_decision()
+    service = ResearchSettlementService(
+        lifecycle=DecisionLifecycleService(storage),
+        market_data_adapter=FixtureMarketDataAdapter([]),
+    )
+
+    result = service.settle_assembly(
+        assembly_id=assembly_id,
+        as_of=decision.valid_until + timedelta(days=1),
+    )
+    repeated = service.settle_assembly(
+        assembly_id=assembly_id,
+        as_of=decision.valid_until + timedelta(days=2),
+    )
+
+    assert result.outcome.status.value == "insufficient_data"
+    assert result.outcome.market_data_source == "unavailable"
+    assert result.evaluation.final_result.value == "inconclusive"
+    assert result.learnings
+    assert repeated.record == result.record
+    assert len(storage.list(Learning)) == 2
+
+
+def test_research_settlement_retry_recovers_missing_learning_proposal() -> None:
+    storage, assembly_id, decision = seed_finalized_research_decision_with_storage(
+        FailOnceLearningStorage()
+    )
+    service = ResearchSettlementService(
+        lifecycle=DecisionLifecycleService(storage),
+        market_data_adapter=FixtureMarketDataAdapter(
+            [
+                market_bar(decision.created_at.date(), "10.00"),
+                market_bar(decision.valid_until.date() + timedelta(days=1), "10.50"),
+            ]
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="transient learning save failure"):
+        service.settle_assembly(
+            assembly_id=assembly_id,
+            as_of=decision.valid_until + timedelta(days=1),
+        )
+    assert len(storage.list(Learning)) == 1
+
+    storage.fail_on_learning_save = False
+    result = service.settle_assembly(
+        assembly_id=assembly_id,
+        as_of=decision.valid_until + timedelta(days=2),
+    )
+
+    assert {learning.learning_type for learning in result.learnings} == {
+        LearningType.AGENT_WEIGHT_UPDATE,
+        LearningType.RULE_UPDATE,
+    }
+    assert len(storage.list(Learning)) == 2
+    assert len(result.record.learning_ids) == 2
 
 
 def test_research_settlement_uses_session_valid_until_for_readiness() -> None:
