@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal, Protocol, cast
@@ -15,6 +14,7 @@ from aios.application.brain002 import (
 )
 from aios.application.brain003 import DiscussionService
 from aios.application.brain004 import DecisionService
+from aios.application.evidence_bridge import CoreEvidenceBridge
 from aios.application.market_evidence import MarketEvidenceImportService
 from aios.application.research_records import ResearchRecordService
 from aios.integrations.evidence import Evidence as BrainEvidence
@@ -186,14 +186,13 @@ class BrainResearchPipeline:
             limit=100,
             offset=0,
         )
+        bridge = CoreEvidenceBridge(self._storage)
         ids: list[str] = []
         for record in records:
-            converted = _brain_evidence_to_kernel(record, session)
-            existing = self._existing_evidence_by_hash(converted.content_hash)
-            if existing is not None:
-                ids.append(existing.evidence_id)
-                continue
-            self._lifecycle.register_evidence(converted)
+            converted = bridge.ensure_core_evidence(
+                record,
+                default_symbol=session.scope.symbol,
+            )
             ids.append(converted.evidence_id)
         return tuple(dict.fromkeys(ids))
 
@@ -515,56 +514,6 @@ class BrainResearchPipeline:
             decision_id=assembly.decision_id,
             assembly_id=assembly.assembly_id,
         )
-
-    def _existing_evidence_by_hash(self, content_hash: str) -> Evidence | None:
-        for evidence in self._storage.list(Evidence):
-            if evidence.content_hash == content_hash:
-                return evidence
-        return None
-
-
-def _brain_evidence_to_kernel(
-    evidence: BrainEvidence,
-    session: ResearchSession,
-) -> Evidence:
-    published_at = evidence.published_at or evidence.collected_at
-    evidence_type = _kernel_evidence_type(evidence)
-    content_hash = hashlib.sha256(
-        f"brain001:{evidence.evidence_id}:{evidence.fingerprint}".encode()
-    ).hexdigest()
-    return Evidence(
-        evidence_type=evidence_type,
-        source=evidence.source,
-        symbols=tuple(evidence.metadata.get("symbols") or (session.scope.symbol,)),
-        published_at=published_at,
-        available_at=evidence.available_at,
-        summary=evidence.summary or evidence.content[:500],
-        reliability=0.9 if evidence_type == "policy" else 0.8,
-        content_hash=content_hash,
-        metadata={
-            **evidence.metadata,
-            "brain_evidence_id": str(evidence.evidence_id),
-            "source_type": evidence.source_type,
-            "source_identifier": evidence.source_identifier,
-            "source_url": evidence.source_url,
-            "title": evidence.title,
-            "content": evidence.content,
-            "fingerprint": evidence.fingerprint,
-            "raw_artifact_path": str(evidence.raw_artifact_path),
-            "provider_record": evidence.provider_record.model_dump(mode="json"),
-        },
-        created_at=evidence.collected_at,
-    )
-
-
-def _kernel_evidence_type(evidence: BrainEvidence) -> str:
-    if evidence.metadata.get("source_domain") == "policy":
-        return "policy"
-    if evidence.source_type == "announcement":
-        return "company_announcement"
-    if evidence.source_type in {"rss", "webpage"}:
-        return "news"
-    return evidence.source_type
 
 
 def _hypothesis_statement(evidence: tuple[Evidence, ...]) -> str:

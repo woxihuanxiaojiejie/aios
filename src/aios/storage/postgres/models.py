@@ -33,6 +33,17 @@ class EvidenceRecord(Base):
         CheckConstraint("available_at >= published_at", "ck_evidence_available_at"),
         Index("ix_evidence_content_hash", "content_hash"),
         Index("ix_evidence_published_at", "published_at"),
+        Index("ix_evidence_source_type", "source_type"),
+        Index("ix_evidence_source_identifier", "source_identifier"),
+        Index("ix_evidence_collected_at", "collected_at"),
+        Index("ix_evidence_fingerprint", "fingerprint"),
+        Index("ix_evidence_processing_status", "processing_status"),
+        Index(
+            "uq_evidence_legacy_brain_evidence_id",
+            "legacy_brain_evidence_id",
+            unique=True,
+            postgresql_where=text("legacy_brain_evidence_id is not null"),
+        ),
     )
 
     evidence_id: Mapped[str] = mapped_column(String(64), primary_key=True)
@@ -53,6 +64,20 @@ class EvidenceRecord(Base):
         JSONB,
         nullable=False,
     )
+    title: Mapped[str | None] = mapped_column(String)
+    raw_content: Mapped[str | None] = mapped_column(String)
+    raw_response: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    source_type: Mapped[str | None] = mapped_column(String(64))
+    source_identifier: Mapped[str | None] = mapped_column(String(1024))
+    source_url: Mapped[str | None] = mapped_column(String(2048))
+    collected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    entities: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    fingerprint: Mapped[str | None] = mapped_column(String(64))
+    credibility: Mapped[float | None] = mapped_column(Float)
+    freshness: Mapped[str | None] = mapped_column(String(64))
+    processing_status: Mapped[str] = mapped_column(String(64), nullable=False)
+    parse_error: Mapped[str | None] = mapped_column(String)
+    legacy_brain_evidence_id: Mapped[str | None] = mapped_column(String(36))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
