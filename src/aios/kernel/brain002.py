@@ -291,6 +291,30 @@ class SkillResultPayload(BaseModel):
             raise ValueError(msg)
         return normalized
 
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def normalize_confidence(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return float(value.strip())
+        return value
+
+    @field_validator(
+        "supporting_evidence_ids",
+        "contradicting_evidence_ids",
+        "assumptions",
+        "risk_factors",
+        "invalid_conditions",
+        "missing_information",
+        mode="before",
+    )
+    @classmethod
+    def normalize_tuple_input(cls, value: Any) -> Any:
+        if value is None:
+            return ()
+        if isinstance(value, str):
+            return (value,)
+        return value
+
     @field_validator(
         "supporting_evidence_ids",
         "contradicting_evidence_ids",

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import builtins
 import concurrent.futures
+import json
 from collections import defaultdict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -63,6 +64,76 @@ class SkillPrompt:
     system_prompt: str
     user_prompt: str
     prompt_version: str
+
+
+@dataclass(frozen=True)
+class SkillResponseParseResult:
+    raw_response: str
+    extracted_payload: dict[str, Any] | None
+    validation_error: Any | None
+    payload: SkillResultPayload | None
+
+
+class SkillResponseParser:
+    def parse(self, raw_response: str) -> SkillResponseParseResult:
+        extracted_payload: dict[str, Any] | None = None
+        try:
+            extracted_payload = self._extract_json_object(raw_response)
+            payload = SkillResultPayload.model_validate(extracted_payload)
+            return SkillResponseParseResult(
+                raw_response=raw_response,
+                extracted_payload=extracted_payload,
+                validation_error=None,
+                payload=payload,
+            )
+        except (json.JSONDecodeError, ValueError, ValidationError) as exc:
+            validation_error = (
+                exc.errors() if isinstance(exc, ValidationError) else str(exc)
+            )
+            return SkillResponseParseResult(
+                raw_response=raw_response,
+                extracted_payload=extracted_payload,
+                validation_error=validation_error,
+                payload=None,
+            )
+
+    def _extract_json_object(self, raw_response: str) -> dict[str, Any]:
+        text = self._strip_json_code_fence(raw_response.strip())
+        decoder = json.JSONDecoder()
+        starts = [index for index in (text.find("{"), text.find("[")) if index >= 0]
+        if not starts:
+            msg = "LLM response did not contain a JSON object"
+            raise ValueError(msg)
+        parsed, _ = decoder.raw_decode(text[min(starts) :])
+        if not isinstance(parsed, dict):
+            msg = "LLM response JSON root must be an object"
+            raise ValueError(msg)
+        return self._unwrap_common_payload(parsed)
+
+    def _strip_json_code_fence(self, text: str) -> str:
+        if not text.startswith("```"):
+            return text
+        lines = text.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        return "\n".join(lines).strip()
+
+    def _unwrap_common_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+        for key in ("payload", "result", "output"):
+            value = payload.get(key)
+            if isinstance(value, dict):
+                return value
+        arguments = payload.get("arguments")
+        if isinstance(arguments, str):
+            try:
+                parsed = json.loads(arguments)
+            except json.JSONDecodeError:
+                return payload
+            if isinstance(parsed, dict):
+                return parsed
+        return payload
 
 
 class ExecutableSkill(Protocol):
@@ -448,26 +519,13 @@ class SkillExecutor:
             prompt = skill.build_prompt(skill_input)
             prompt_version = prompt.prompt_version
 
-            def attempt() -> LLMStructuredResult:
-                nonlocal attempts
-                attempts += 1
-                return self._run_with_timeout(
-                    lambda: self._llm.generate_structured(
-                        model=self._model,
-                        system_prompt=prompt.system_prompt,
-                        user_prompt=prompt.user_prompt,
-                        response_schema=skill.response_schema,
-                        temperature=0.0,
-                    )
+            llm_result, payload, repair_attempted, attempts = (
+                self._generate_valid_payload(
+                    skill=skill,
+                    prompt=prompt,
+                    evidence=evidence,
                 )
-
-            retryer = Retrying(
-                stop=stop_after_attempt(self._max_attempts),
-                wait=wait_fixed(0),
-                reraise=True,
             )
-            llm_result = retryer(attempt)
-            payload = self._validated_payload(llm_result.parsed)
             finished_at = utc_now()
             execution = self._execution_record(
                 task=task,
@@ -485,6 +543,7 @@ class SkillExecutor:
                 skill=skill,
                 payload=payload,
                 llm_result=llm_result,
+                repair_attempted=repair_attempted,
             )
             return execution, result
         except TimeoutError as exc:
@@ -507,6 +566,152 @@ class SkillExecutor:
                 status=SkillExecutionStatus.FAILED,
                 error=str(exc),
             ), None
+
+    def _generate_valid_payload(
+        self,
+        *,
+        skill: ExecutableSkill,
+        prompt: SkillPrompt,
+        evidence: tuple[Evidence, ...],
+    ) -> tuple[LLMStructuredResult, SkillResultPayload, bool, int]:
+        attempts = 0
+
+        def generate(system_prompt: str, user_prompt: str) -> LLMStructuredResult:
+            nonlocal attempts
+            retryer = Retrying(
+                stop=stop_after_attempt(self._max_attempts),
+                wait=wait_fixed(0),
+                reraise=True,
+            )
+
+            def attempt() -> LLMStructuredResult:
+                nonlocal attempts
+                attempts += 1
+                return self._run_with_timeout(
+                    lambda: self._llm.generate_structured(
+                        model=self._model,
+                        system_prompt=system_prompt,
+                        user_prompt=user_prompt,
+                        response_schema=skill.response_schema,
+                        temperature=0.0,
+                    )
+                )
+
+            return retryer(attempt)
+
+        try:
+            llm_result = generate(prompt.system_prompt, prompt.user_prompt)
+            payload = self._validated_payload(llm_result.parsed)
+            self._validate_evidence_references(payload, evidence)
+            return llm_result, payload, False, attempts
+        except Exception as first_exc:
+            if not self._is_repairable_response_error(first_exc):
+                raise
+            repair_prompt = self._repair_prompt(
+                prompt=prompt,
+                error=first_exc,
+                evidence=evidence,
+            )
+            try:
+                repaired_result = generate(
+                    repair_prompt.system_prompt,
+                    repair_prompt.user_prompt,
+                )
+                repaired_payload = self._validated_payload(repaired_result.parsed)
+                self._validate_evidence_references(repaired_payload, evidence)
+                return repaired_result, repaired_payload, True, attempts
+            except Exception as second_exc:
+                raise second_exc from first_exc
+
+    def _repair_prompt(
+        self,
+        *,
+        prompt: SkillPrompt,
+        error: Exception,
+        evidence: tuple[Evidence, ...],
+    ) -> SkillPrompt:
+        raw_response = getattr(error, "raw_response", None)
+        extracted_payload = getattr(error, "extracted_payload", None)
+        validation_error = getattr(error, "validation_error", None) or str(error)
+        allowed_evidence_ids = [item.evidence_id for item in evidence]
+        repair_payload = {
+            "repair_instruction": (
+                "Do not redo the investment analysis. Preserve the original "
+                "conclusion semantics and only repair structure, field names, "
+                "types, and evidence ID references. Return only JSON matching "
+                "SkillResultPayload. The output must be a flat object; do not "
+                "nest the original payload inside conclusion or any other field."
+            ),
+            "required_top_level_keys": [
+                "conclusion",
+                "direction",
+                "confidence",
+                "supporting_evidence_ids",
+                "contradicting_evidence_ids",
+                "assumptions",
+                "risk_factors",
+                "invalid_conditions",
+                "missing_information",
+                "reasoning_summary",
+            ],
+            "field_types": {
+                "conclusion": "string, not object",
+                "direction": "bullish | bearish | neutral | uncertain",
+                "confidence": "number from 0 to 1",
+                "supporting_evidence_ids": "array of allowed evidence ID strings",
+                "contradicting_evidence_ids": "array of allowed evidence ID strings",
+                "assumptions": "array of strings",
+                "risk_factors": "array of strings",
+                "invalid_conditions": "array of strings",
+                "missing_information": "array of strings",
+                "reasoning_summary": "string",
+            },
+            "original_user_prompt": prompt.user_prompt,
+            "original_raw_response": raw_response,
+            "original_extracted_payload": extracted_payload,
+            "validation_error": validation_error,
+            "allowed_evidence_ids": allowed_evidence_ids,
+        }
+        return SkillPrompt(
+            system_prompt=(
+                f"{prompt.system_prompt}\n"
+                "The previous response failed SkillResultPayload validation. "
+                "Do not redo the investment analysis. Preserve the original "
+                "conclusion semantics and only repair structure, field names, "
+                "types, and evidence ID references. Return only JSON matching "
+                "SkillResultPayload."
+            ),
+            user_prompt=json.dumps(repair_payload, ensure_ascii=True, sort_keys=True),
+            prompt_version=prompt.prompt_version,
+        )
+
+    def _is_repairable_response_error(self, error: Exception) -> bool:
+        return isinstance(error, ValueError) or any(
+            getattr(error, attribute, None) is not None
+            for attribute in ("raw_response", "extracted_payload", "validation_error")
+        )
+
+    def _validate_evidence_references(
+        self,
+        payload: SkillResultPayload,
+        evidence: tuple[Evidence, ...],
+    ) -> None:
+        valid_evidence_ids = {item.evidence_id for item in evidence}
+        unknown_supporting = sorted(
+            set(payload.supporting_evidence_ids) - valid_evidence_ids
+        )
+        unknown_contradicting = sorted(
+            set(payload.contradicting_evidence_ids) - valid_evidence_ids
+        )
+        errors: builtins.list[str] = []
+        if unknown_supporting:
+            errors.append(f"unknown supporting_evidence_ids: {unknown_supporting}")
+        if unknown_contradicting:
+            errors.append(
+                f"unknown contradicting_evidence_ids: {unknown_contradicting}"
+            )
+        if errors:
+            raise ValueError("; ".join(errors))
 
     def _point_in_time_evidence(
         self,
@@ -620,6 +825,7 @@ class SkillExecutor:
         skill: ExecutableSkill,
         payload: SkillResultPayload,
         llm_result: LLMStructuredResult,
+        repair_attempted: bool,
     ) -> SkillResultRecord:
         return SkillResultRecord(
             execution_id=execution.execution_id,
@@ -637,7 +843,11 @@ class SkillExecutor:
             reasoning_summary=payload.reasoning_summary,
             raw_output={
                 "parsed": llm_result.parsed.model_dump(mode="json"),
+                "raw_response": llm_result.raw_response,
+                "extracted_payload": llm_result.extracted_payload,
+                "validation_error": llm_result.validation_error,
                 "request_id": llm_result.request_id,
                 "finish_reason": llm_result.raw_finish_reason,
+                "repair_attempted": repair_attempted,
             },
         )

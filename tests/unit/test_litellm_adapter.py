@@ -72,6 +72,8 @@ def test_litellm_adapter_parses_structured_response() -> None:
     assert result.provider == "fake"
     assert result.prompt_tokens == 10
     assert result.raw_finish_reason == "stop"
+    assert result.raw_response is not None
+    assert result.extracted_payload is not None
 
 
 def test_litellm_adapter_rejects_invalid_json() -> None:
@@ -86,6 +88,70 @@ def test_litellm_adapter_rejects_invalid_json() -> None:
             response_schema=DecisionDraft,
             temperature=0,
         )
+
+
+def test_litellm_adapter_parses_markdown_json_fence() -> None:
+    def completion_fenced_json(**_kwargs: object) -> Response:
+        return Response(
+            choices=[
+                Choice(
+                    Message(
+                        content=(
+                            "```json\n"
+                            '{"action":"hold","confidence":0.5,'
+                            '"expected_return":0,"max_expected_loss":0.01,'
+                            '"horizon":"1d",'
+                            '"reasoning_summary":"hold based on evidence",'
+                            '"supporting_evidence_ids":["ev_1"],'
+                            '"risk_factors":[],"invalidation_conditions":[]}'
+                            "\n```"
+                        )
+                    )
+                )
+            ]
+        )
+
+    result = LiteLLMAdapter(completion_fenced_json).generate_structured(
+        model="fake/model",
+        system_prompt="system",
+        user_prompt="user",
+        response_schema=DecisionDraft,
+        temperature=0,
+    )
+
+    assert isinstance(result.parsed, DecisionDraft)
+
+
+def test_litellm_adapter_parses_json_with_surrounding_text() -> None:
+    def completion_surrounded_json(**_kwargs: object) -> Response:
+        return Response(
+            choices=[
+                Choice(
+                    Message(
+                        content=(
+                            "Here is the JSON:\n"
+                            '{"action":"hold","confidence":0.5,'
+                            '"expected_return":0,"max_expected_loss":0.01,'
+                            '"horizon":"1d",'
+                            '"reasoning_summary":"hold based on evidence",'
+                            '"supporting_evidence_ids":["ev_1"],'
+                            '"risk_factors":[],"invalidation_conditions":[]}'
+                            "\nDone."
+                        )
+                    )
+                )
+            ]
+        )
+
+    result = LiteLLMAdapter(completion_surrounded_json).generate_structured(
+        model="fake/model",
+        system_prompt="system",
+        user_prompt="user",
+        response_schema=DecisionDraft,
+        temperature=0,
+    )
+
+    assert isinstance(result.parsed, DecisionDraft)
 
 
 def test_litellm_adapter_missing_sdk_maps_to_configuration_error() -> None:

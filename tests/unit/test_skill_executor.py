@@ -46,7 +46,7 @@ def task() -> AnalysisTask:
         market="cn",
         asset_type="stock",
         horizon="swing",
-        as_of=now(),
+        as_of=now() + timedelta(minutes=1),
         evidence_ids=("ev_price",),
     )
 
@@ -119,6 +119,8 @@ class FakeLLM:
             total_tokens=16,
             latency_ms=7,
             raw_finish_reason="stop",
+            raw_response=parsed.model_dump_json(),
+            extracted_payload=parsed.model_dump(mode="json"),
         )
 
 
@@ -229,3 +231,86 @@ def test_executor_rejects_outputs_that_do_not_match_skill_result_payload() -> No
     assert outcome.results == ()
     assert outcome.executions[0].status is SkillExecutionStatus.FAILED
     assert "SkillResultPayload" in str(outcome.executions[0].error)
+
+
+def test_executor_rejects_nonexistent_evidence_id_and_repairs_once() -> None:
+    calls = 0
+
+    def handler(user_prompt: str) -> SkillResultPayload:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return payload().model_copy(
+                update={"supporting_evidence_ids": ("ev_missing",)}
+            )
+        assert "ev_missing" in user_prompt
+        assert "Do not redo the investment analysis" in user_prompt
+        return payload()
+
+    outcome = SkillExecutor(
+        llm=FakeLLM(handler),
+        model="fake/model",
+        timeout_seconds=1,
+        max_attempts=1,
+    ).execute(
+        task=task(),
+        skills=(FakeSkill("technical_trend"),),
+        evidence=(evidence(),),
+    )
+
+    assert calls == 2
+    assert outcome.executions[0].status is SkillExecutionStatus.SUCCEEDED
+    assert outcome.executions[0].retry_count == 1
+    assert outcome.results[0].supporting_evidence_ids == ("ev_price",)
+    assert outcome.results[0].raw_output["repair_attempted"] is True
+
+
+def test_executor_fails_after_one_repair_retry() -> None:
+    calls = 0
+
+    def handler(user_prompt: str) -> SkillResultPayload:
+        nonlocal calls
+        calls += 1
+        return payload().model_copy(update={"supporting_evidence_ids": ("ev_missing",)})
+
+    outcome = SkillExecutor(
+        llm=FakeLLM(handler),
+        model="fake/model",
+        timeout_seconds=1,
+        max_attempts=1,
+    ).execute(
+        task=task(),
+        skills=(FakeSkill("technical_trend"),),
+        evidence=(evidence(),),
+    )
+
+    assert calls == 2
+    assert outcome.results == ()
+    assert outcome.executions[0].status is SkillExecutionStatus.FAILED
+    assert "unknown supporting_evidence_ids" in str(outcome.executions[0].error)
+
+
+def test_executor_single_skill_repair_failure_does_not_block_other_skills() -> None:
+    def handler(user_prompt: str) -> SkillResultPayload:
+        if "policy_impact" in user_prompt:
+            return payload().model_copy(
+                update={"supporting_evidence_ids": ("ev_missing",)}
+            )
+        return payload()
+
+    outcome = SkillExecutor(
+        llm=FakeLLM(handler),
+        model="fake/model",
+        timeout_seconds=1,
+        max_attempts=1,
+    ).execute(
+        task=task(),
+        skills=(FakeSkill("technical_trend"), FakeSkill("policy_impact")),
+        evidence=(evidence(),),
+    )
+
+    assert [result.skill_id for result in outcome.results] == ["technical_trend"]
+    assert [execution.status for execution in outcome.executions] == [
+        SkillExecutionStatus.SUCCEEDED,
+        SkillExecutionStatus.FAILED,
+    ]

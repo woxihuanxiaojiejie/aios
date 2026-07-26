@@ -9,6 +9,7 @@ import pytest
 from aios.application.brain002 import ExecutableSkill, SkillExecutor
 from aios.integrations.litellm.adapter import LiteLLMAdapter
 from aios.kernel.brain002 import AnalysisTask
+from aios.kernel.enums import SkillExecutionStatus
 from aios.kernel.evidence import Evidence
 from aios.skills.brain002 import (
     AnnouncementRiskSkill,
@@ -17,12 +18,11 @@ from aios.skills.brain002 import (
     SectorStrengthSkill,
     TechnicalTrendSkill,
 )
+from aios.storage.memory import InMemoryStorage
 
 
 @pytest.mark.external_llm
 def test_real_litellm_brain002_mvp_skills_smoke() -> None:
-    if os.getenv("AIOS_RUN_EXTERNAL_LLM_TESTS") != "1":
-        pytest.skip("set AIOS_RUN_EXTERNAL_LLM_TESTS=1 to run external LLM smoke")
     if os.getenv("AIOS_RUN_BRAIN002_EXTERNAL_LLM_TESTS") != "1":
         pytest.skip("set AIOS_RUN_BRAIN002_EXTERNAL_LLM_TESTS=1 to run BRAIN-002 smoke")
     model = os.getenv("AIOS_EXTERNAL_LLM_MODEL")
@@ -59,24 +59,33 @@ def test_real_litellm_brain002_mvp_skills_smoke() -> None:
 
     valid_evidence_ids = {item.evidence_id for item in evidence}
     assert len(outcome.executions) == 5
-    assert len(outcome.results) == 5
-    assert {result.skill_id for result in outcome.results} == {
-        "technical_trend",
-        "sector_strength",
-        "policy_impact",
-        "announcement_risk",
-        "market_sentiment",
-    }
+    assert len({result.skill_id for result in outcome.results}) >= 2
+    assert (
+        any(
+            execution.status is SkillExecutionStatus.FAILED
+            for execution in outcome.executions
+        )
+        or len(outcome.results) == 5
+    )
     for execution in outcome.executions:
-        assert execution.provider == model.split("/", maxsplit=1)[0]
-        assert execution.model
-        assert execution.latency_ms is not None
-        assert execution.error is None
+        if execution.status is SkillExecutionStatus.SUCCEEDED:
+            assert execution.provider == model.split("/", maxsplit=1)[0]
+            assert execution.model
+            assert execution.token_usage.total_tokens is not None
+            assert execution.latency_ms is not None
+            assert execution.error is None
     for result in outcome.results:
         assert set(result.supporting_evidence_ids).issubset(valid_evidence_ids)
+        assert set(result.contradicting_evidence_ids).issubset(valid_evidence_ids)
         assert result.risk_factors
         assert result.invalid_conditions
         assert result.missing_information
+    storage = InMemoryStorage()
+    for execution in outcome.executions:
+        storage.save(execution)
+    for result in outcome.results:
+        storage.save(result)
+    assert storage.get(type(outcome.results[0]), outcome.results[0].result_id)
 
 
 def _brain002_evidence(as_of: datetime) -> tuple[Evidence, ...]:

@@ -10,6 +10,15 @@ from aios.kernel.brain002 import SkillDefinition, SkillResultPayload
 SUPPORTED_MARKETS = ("cn", "us")
 SUPPORTED_ASSET_TYPES = ("stock", "etf")
 SUPPORTED_HORIZONS = ("intraday", "swing", "position")
+SKILL_RESULT_OUTPUT_CONTRACT = (
+    "Output exactly one flat JSON object with these top-level keys and no "
+    "additional keys: conclusion, direction, confidence, supporting_evidence_ids, "
+    "contradicting_evidence_ids, assumptions, risk_factors, invalid_conditions, "
+    "missing_information, reasoning_summary. conclusion must be a concise string, "
+    "not an object. reasoning_summary must be a string. direction must be one of "
+    "bullish, bearish, neutral, uncertain. confidence must be a number from 0 to 1. "
+    "All evidence ID fields and list fields must be arrays of strings."
+)
 
 
 @dataclass(frozen=True)
@@ -22,7 +31,7 @@ class PromptSkill:
 
     def build_prompt(self, skill_input: SkillInput) -> SkillPrompt:
         return SkillPrompt(
-            system_prompt=self.system_prompt,
+            system_prompt=f"{self.system_prompt} {SKILL_RESULT_OUTPUT_CONTRACT}",
             user_prompt=self._user_prompt(skill_input),
             prompt_version=self.prompt_version,
         )

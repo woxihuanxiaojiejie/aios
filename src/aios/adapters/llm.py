@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Any, Protocol
 
 from pydantic import BaseModel, ConfigDict
 
@@ -12,6 +12,9 @@ class LLMStructuredResult(BaseModel):
     provider: str
     model: str
     request_id: str | None = None
+    raw_response: str | None = None
+    extracted_payload: dict[str, Any] | None = None
+    validation_error: Any | None = None
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
     total_tokens: int | None = None

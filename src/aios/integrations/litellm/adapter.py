@@ -77,13 +77,24 @@ class LiteLLMAdapter:
             api_base=runtime_config.api_base if runtime_config else None,
         )
         latency_ms = int((time.perf_counter() - started) * 1000)
-        parsed = self._parse_response(response, response_schema)
         usage = _usage(response)
+        raw_response = _message_content(response)
+        parsed, extracted_payload = self._parse_response(
+            response=response,
+            response_schema=response_schema,
+            raw_response=raw_response,
+            provider=provider,
+            model=str(getattr(response, "model", model) or model),
+            usage=usage,
+            latency_ms=latency_ms,
+        )
         return LLMStructuredResult(
             parsed=parsed,
             provider=provider,
             model=str(getattr(response, "model", model) or model),
             request_id=_optional_str(getattr(response, "id", None)),
+            raw_response=raw_response if isinstance(raw_response, str) else None,
+            extracted_payload=extracted_payload,
             prompt_tokens=_optional_int(usage.get("prompt_tokens")),
             completion_tokens=_optional_int(usage.get("completion_tokens")),
             total_tokens=_optional_int(usage.get("total_tokens")),
@@ -187,19 +198,50 @@ class LiteLLMAdapter:
 
     def _parse_response(
         self,
+        *,
         response: Any,
         response_schema: type[BaseModel],
-    ) -> BaseModel:
-        content = _message_content(response)
+        raw_response: Any,
+        provider: str,
+        model: str,
+        usage: dict[str, Any],
+        latency_ms: int,
+    ) -> tuple[BaseModel, dict[str, Any]]:
+        content = raw_response
         if not isinstance(content, str):
             msg = "LLM response did not contain text content"
-            raise LLMStructuredOutputError(msg)
+            raise LLMStructuredOutputError(
+                msg,
+                raw_response=None,
+                provider=provider,
+                model=model,
+                prompt_tokens=_optional_int(usage.get("prompt_tokens")),
+                completion_tokens=_optional_int(usage.get("completion_tokens")),
+                total_tokens=_optional_int(usage.get("total_tokens")),
+                latency_ms=latency_ms,
+                finish_reason=_finish_reason(response),
+            )
         try:
-            payload = json.loads(content)
-            return response_schema.model_validate(payload)
-        except (json.JSONDecodeError, ValidationError) as exc:
+            payload = _extract_json_object(content)
+            return response_schema.model_validate(payload), payload
+        except (json.JSONDecodeError, ValueError, ValidationError) as exc:
             msg = "LLM response failed structured output validation"
-            raise LLMStructuredOutputError(msg) from exc
+            validation_error = (
+                exc.errors() if isinstance(exc, ValidationError) else str(exc)
+            )
+            raise LLMStructuredOutputError(
+                msg,
+                raw_response=content,
+                extracted_payload=payload if "payload" in locals() else None,
+                validation_error=validation_error,
+                provider=provider,
+                model=model,
+                prompt_tokens=_optional_int(usage.get("prompt_tokens")),
+                completion_tokens=_optional_int(usage.get("completion_tokens")),
+                total_tokens=_optional_int(usage.get("total_tokens")),
+                latency_ms=latency_ms,
+                finish_reason=_finish_reason(response),
+            ) from exc
 
 
 def _messages(
@@ -222,6 +264,49 @@ def _messages(
 
 def _response_format_kwargs(response_format: dict[str, Any] | None) -> dict[str, Any]:
     return {} if response_format is None else {"response_format": response_format}
+
+
+def _extract_json_object(content: str) -> dict[str, Any]:
+    text = _strip_json_code_fence(content.strip())
+    decoder = json.JSONDecoder()
+    starts = [index for index in (text.find("{"), text.find("[")) if index >= 0]
+    if not starts:
+        msg = "LLM response did not contain a JSON object"
+        raise ValueError(msg)
+    parsed, _ = decoder.raw_decode(text[min(starts) :])
+    if isinstance(parsed, dict):
+        wrapped = _unwrap_common_payload(parsed)
+        if isinstance(wrapped, dict):
+            return wrapped
+    msg = "LLM response JSON root must be an object"
+    raise ValueError(msg)
+
+
+def _strip_json_code_fence(text: str) -> str:
+    if not text.startswith("```"):
+        return text
+    lines = text.splitlines()
+    if lines and lines[0].startswith("```"):
+        lines = lines[1:]
+    if lines and lines[-1].strip() == "```":
+        lines = lines[:-1]
+    return "\n".join(lines).strip()
+
+
+def _unwrap_common_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    for key in ("payload", "result", "output"):
+        value = payload.get(key)
+        if isinstance(value, dict):
+            return value
+    arguments = payload.get("arguments")
+    if isinstance(arguments, str):
+        try:
+            parsed = json.loads(arguments)
+        except json.JSONDecodeError:
+            return payload
+        if isinstance(parsed, dict):
+            return parsed
+    return payload
 
 
 def validate_llm_runtime_config(
