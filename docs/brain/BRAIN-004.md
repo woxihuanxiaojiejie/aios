@@ -1,42 +1,50 @@
-# BRAIN-004 — Decision & Risk Engine
+# BRAIN-004 - Decision
 
 ## Core Question
 
-What should we do?
+Which final direction should AIOS select, and why were the alternatives rejected?
 
 ## Responsibility
 
-Generate the final trading decision and risk assessment.
+BRAIN-004 is the only Brain that generates the final auditable investment
+decision. It consumes existing upstream outputs and does not perform new market
+analysis.
 
 ## Inputs
 
-- Validated Hypotheses
-- Debate Records
-- Portfolio Status
-- Market Constraints
+- BRAIN-001 Evidence
+- BRAIN-002 Skill Results
+- BRAIN-003 Discussion Result
 
-## Responsibilities
+## Explicit Boundaries
 
-- Generate trading plans
-- Position sizing
-- Risk assessment
-- Entry conditions
-- Exit conditions
-- Stop conditions
-- Final decision
+BRAIN-004 must not:
 
-## Decision Types
+- call or rerun Skills
+- browse, fetch news, or fetch market data
+- modify skill definitions or long-term weights
+- perform Learning or Settlement
+- interact with brokers
+- place orders automatically
+- generate position sizing, stop-loss, or take-profit plans
 
-- BUY
-- SELL
-- HOLD
-- WATCH
-- NO_TRADE
-- INVALID
+Trade Plan, Settlement, and Learning remain separate downstream stages.
 
 ## Outputs
 
-- Trade Plan
-- Decision
-- Risk Report
-- Execution Parameters
+`DecisionResult`:
+
+- `direction`
+- `confidence`
+- `action`
+- `reasoning`
+- `supporting_skills`
+- `opposing_skills`
+- `discussion_refs`
+- `evidence_refs`
+- `risks`
+- `rejected_directions`
+- `decision_summary`
+
+All reasoning, risk notes, and rejected directions must be traceable to supplied
+Skill IDs, Discussion refs, or Evidence IDs.

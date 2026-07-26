@@ -21,6 +21,13 @@ from aios.kernel.brain003 import (
     EvidenceReview,
     RevisionSuggestion,
 )
+from aios.kernel.brain004 import (
+    DecisionExecution,
+    DecisionResult,
+    DirectionRejection,
+    ReferencedReason,
+    RiskNote,
+)
 from aios.kernel.debate import (
     DebateRecord,
     DebateStatement,
@@ -36,6 +43,7 @@ from aios.kernel.enums import (
     ApprovalStatus,
     DebateStance,
     DebateStatus,
+    DecisionDirection,
     DecisionStatus,
     DirectionalResult,
     EvaluationFinalResult,
@@ -76,9 +84,11 @@ from aios.storage.postgres.models import (
     DebateStatementRecord,
     DecisionAssemblyRecordModel,
     DecisionEvaluationRecord,
+    DecisionExecutionRecord,
     DecisionOutcomeRecord,
     DecisionProposalRecord,
     DecisionRecord,
+    DecisionResultRecord,
     DiscussionExecutionRecord,
     DiscussionResultRecord,
     EvidenceRecord,
@@ -107,6 +117,8 @@ type Record = (
     | LearningRecord
     | DecisionOutcomeRecord
     | DecisionEvaluationRecord
+    | DecisionExecutionRecord
+    | DecisionResultRecord
     | ResearchSettlementRecordModel
     | WatchlistItemRecord
     | ResearchSessionRecord
@@ -125,6 +137,8 @@ type Record = (
     | SkillResultRecord
     | DiscussionExecutionRecord
     | DiscussionResultRecord
+    | DecisionExecutionRecord
+    | DecisionResultRecord
 )
 
 
@@ -235,6 +249,49 @@ def to_model(entity: KernelModel) -> Record:
             ],
             discussion_summary=entity.discussion_summary,
             discussion_confidence=entity.discussion_confidence,
+            created_at=entity.created_at,
+        )
+    if isinstance(entity, DecisionExecution):
+        return DecisionExecutionRecord(
+            decision_execution_id=entity.decision_execution_id,
+            task_id=entity.task_id,
+            discussion_result_id=entity.discussion_result_id,
+            skill_result_ids=list(entity.skill_result_ids),
+            evidence_ids=list(entity.evidence_ids),
+            started_at=entity.started_at,
+            finished_at=entity.finished_at,
+            status=entity.status.value,
+            provider=entity.provider,
+            model=entity.model,
+            prompt_version=entity.prompt_version,
+            token_usage=entity.token_usage.model_dump(mode="json"),
+            latency_ms=entity.latency_ms,
+            retry_count=entity.retry_count,
+            raw_response=entity.raw_response,
+            parsed_response=entity.parsed_response,
+            error=entity.error,
+            created_at=entity.created_at,
+        )
+    if isinstance(entity, DecisionResult):
+        return DecisionResultRecord(
+            decision_result_id=entity.decision_result_id,
+            decision_execution_id=entity.decision_execution_id,
+            task_id=entity.task_id,
+            discussion_result_id=entity.discussion_result_id,
+            skill_result_ids=list(entity.skill_result_ids),
+            direction=entity.direction.value,
+            confidence=entity.confidence,
+            action=entity.action.value,
+            reasoning=[item.model_dump(mode="json") for item in entity.reasoning],
+            supporting_skills=list(entity.supporting_skills),
+            opposing_skills=list(entity.opposing_skills),
+            discussion_refs=list(entity.discussion_refs),
+            evidence_refs=list(entity.evidence_refs),
+            risks=[item.model_dump(mode="json") for item in entity.risks],
+            rejected_directions=[
+                item.model_dump(mode="json") for item in entity.rejected_directions
+            ],
+            decision_summary=entity.decision_summary,
             created_at=entity.created_at,
         )
     if isinstance(entity, Evidence):
@@ -640,6 +697,52 @@ def model_to_entity(model: DeclarativeBase) -> KernelModel:
             discussion_confidence=model.discussion_confidence,
             created_at=_utc(model.created_at),
         )
+    if isinstance(model, DecisionExecutionRecord):
+        return DecisionExecution(
+            decision_execution_id=model.decision_execution_id,
+            task_id=model.task_id,
+            discussion_result_id=model.discussion_result_id,
+            skill_result_ids=tuple(model.skill_result_ids),
+            evidence_ids=tuple(model.evidence_ids),
+            started_at=_utc(model.started_at),
+            finished_at=_utc(model.finished_at) if model.finished_at else None,
+            status=SkillExecutionStatus(model.status),
+            provider=model.provider,
+            model=model.model,
+            prompt_version=model.prompt_version,
+            token_usage=TokenUsage.model_validate(model.token_usage),
+            latency_ms=model.latency_ms,
+            retry_count=model.retry_count,
+            raw_response=model.raw_response,
+            parsed_response=model.parsed_response,
+            error=model.error,
+            created_at=_utc(model.created_at),
+        )
+    if isinstance(model, DecisionResultRecord):
+        return DecisionResult(
+            decision_result_id=model.decision_result_id,
+            decision_execution_id=model.decision_execution_id,
+            task_id=model.task_id,
+            discussion_result_id=model.discussion_result_id,
+            skill_result_ids=tuple(model.skill_result_ids),
+            direction=DecisionDirection(model.direction),
+            confidence=model.confidence,
+            action=Action(model.action),
+            reasoning=tuple(
+                ReferencedReason.model_validate(item) for item in model.reasoning
+            ),
+            supporting_skills=tuple(model.supporting_skills),
+            opposing_skills=tuple(model.opposing_skills),
+            discussion_refs=tuple(model.discussion_refs),
+            evidence_refs=tuple(model.evidence_refs),
+            risks=tuple(RiskNote.model_validate(item) for item in model.risks),
+            rejected_directions=tuple(
+                DirectionRejection.model_validate(item)
+                for item in model.rejected_directions
+            ),
+            decision_summary=model.decision_summary,
+            created_at=_utc(model.created_at),
+        )
     if isinstance(model, EvidenceRecord):
         return Evidence(
             evidence_id=model.evidence_id,
@@ -920,6 +1023,10 @@ def model_for_entity_type(entity_type: type[KernelModel]) -> type[Record]:
         return DiscussionExecutionRecord
     if entity_type is DiscussionResult:
         return DiscussionResultRecord
+    if entity_type is DecisionExecution:
+        return DecisionExecutionRecord
+    if entity_type is DecisionResult:
+        return DecisionResultRecord
     if entity_type is Evidence:
         return EvidenceRecord
     if entity_type is Experiment:
@@ -973,6 +1080,10 @@ def id_column_for_model(model_type: type[Record]) -> Any:
         return DiscussionExecutionRecord.discussion_execution_id
     if model_type is DiscussionResultRecord:
         return DiscussionResultRecord.discussion_result_id
+    if model_type is DecisionExecutionRecord:
+        return DecisionExecutionRecord.decision_execution_id
+    if model_type is DecisionResultRecord:
+        return DecisionResultRecord.decision_result_id
     if model_type is EvidenceRecord:
         return EvidenceRecord.evidence_id
     if model_type is ExperimentRecord:

@@ -290,6 +290,85 @@ class DiscussionResultRecord(Base):
     )
 
 
+class DecisionExecutionRecord(Base):
+    __tablename__ = "decision_executions"
+    __table_args__ = (
+        CheckConstraint(
+            "finished_at is null or finished_at >= started_at",
+            "ck_decision_executions_finished_at",
+        ),
+        CheckConstraint("latency_ms is null or latency_ms >= 0"),
+        CheckConstraint("retry_count >= 0"),
+        Index("ix_decision_executions_task_id", "task_id"),
+        Index("ix_decision_executions_discussion_result_id", "discussion_result_id"),
+        Index("ix_decision_executions_status", "status"),
+        Index("ix_decision_executions_started_at", "started_at"),
+        Index("ix_decision_executions_created_at", "created_at"),
+    )
+
+    decision_execution_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    task_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    discussion_result_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    skill_result_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    evidence_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(64))
+    model: Mapped[str | None] = mapped_column(String(255))
+    prompt_version: Mapped[str | None] = mapped_column(String(128))
+    token_usage: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    raw_response: Mapped[str | None] = mapped_column(String)
+    parsed_response: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    error: Mapped[str | None] = mapped_column(String)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class DecisionResultRecord(Base):
+    __tablename__ = "decision_results"
+    __table_args__ = (
+        CheckConstraint(
+            "confidence >= 0 and confidence <= 1",
+            "ck_decision_results_confidence",
+        ),
+        Index("ix_decision_results_execution_id", "decision_execution_id"),
+        Index("ix_decision_results_task_id", "task_id"),
+        Index("ix_decision_results_discussion_result_id", "discussion_result_id"),
+        Index("ix_decision_results_direction", "direction"),
+        Index("ix_decision_results_action", "action"),
+        Index("ix_decision_results_created_at", "created_at"),
+    )
+
+    decision_result_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    decision_execution_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    task_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    discussion_result_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    skill_result_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    direction: Mapped[str] = mapped_column(String(32), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    action: Mapped[str] = mapped_column(String(32), nullable=False)
+    reasoning: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    supporting_skills: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    opposing_skills: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    discussion_refs: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    evidence_refs: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    risks: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    rejected_directions: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB,
+        nullable=False,
+    )
+    decision_summary: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
 class ExperimentRecord(Base):
     __tablename__ = "experiments"
     __table_args__ = (

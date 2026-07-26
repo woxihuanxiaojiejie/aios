@@ -13,6 +13,7 @@ from aios.kernel.brain002 import (
     SkillResult,
 )
 from aios.kernel.brain003 import DiscussionExecution, DiscussionResult
+from aios.kernel.brain004 import DecisionExecution, DecisionResult
 from aios.kernel.debate import (
     DebateRecord,
     DebateStatement,
@@ -72,6 +73,8 @@ SUPPORTED_ENTITY_TYPES = (
     SkillResult,
     DiscussionExecution,
     DiscussionResult,
+    DecisionExecution,
+    DecisionResult,
 )
 
 

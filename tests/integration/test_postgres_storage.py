@@ -21,8 +21,10 @@ from tests.factories import (
     make_watchlist_item,
 )
 from tests.integration.conftest import alembic_config, table_count
+from tests.unit.test_brain004_persistence import decision_execution, decision_result
 
 from aios.application.debate import DebateService
+from aios.kernel.brain004 import DecisionExecution, DecisionResult
 from aios.kernel.debate import DecisionAssemblyRecord
 from aios.kernel.decision import Decision
 from aios.kernel.enums import (
@@ -241,6 +243,8 @@ def test_migration_upgrade_downgrade_upgrade(postgres_url: str) -> None:
             "decision_proposal_evidence",
             "risk_reviews",
             "decision_assembly_records",
+            "decision_executions",
+            "decision_results",
         } <= set(inspector.get_table_names())
         review_columns = {
             column["name"]: column for column in inspector.get_columns("reviews")
@@ -278,6 +282,19 @@ def test_migration_upgrade_downgrade_upgrade(postgres_url: str) -> None:
         assert "decision_evaluations" in inspector.get_table_names()
     finally:
         engine.dispose()
+
+
+def test_brain004_decision_storage_round_trip(migrated_postgres_url: str) -> None:
+    storage = PostgresStorage(migrated_postgres_url)
+    execution = decision_execution()
+    result = decision_result(execution.decision_execution_id)
+
+    storage.save(execution)
+    storage.save(result)
+
+    assert storage.get(DecisionExecution, execution.decision_execution_id) == execution
+    assert storage.get(DecisionResult, result.decision_result_id) == result
+    assert storage.list(DecisionResult) == [result]
 
 
 def test_watchlist_storage_filters_and_active_uniqueness(

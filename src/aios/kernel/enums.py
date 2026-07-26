@@ -151,3 +151,10 @@ class SkillDirection(StrEnum):
     BEARISH = "bearish"
     NEUTRAL = "neutral"
     UNCERTAIN = "uncertain"
+
+
+class DecisionDirection(StrEnum):
+    BULLISH = "bullish"
+    BEARISH = "bearish"
+    NEUTRAL = "neutral"
+    NO_TRADE = "no_trade"
