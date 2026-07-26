@@ -743,7 +743,13 @@ class ResearchSessionRecord(Base):
             "ck_research_sessions_horizon",
         ),
         CheckConstraint(
-            "status in ('created', 'evidence_ready', 'cancelled')",
+            "status in ("
+            "'created', 'collecting_evidence', 'evidence_ready', "
+            "'hypothesis_ready', 'skills_running', 'discussion_ready', "
+            "'risk_review', 'decision_ready', 'trade_plan_ready', "
+            "'waiting_execution', 'waiting_settlement', 'settled', "
+            "'reviewed', 'learning_proposed', 'completed', 'failed', 'cancelled'"
+            ")",
             "ck_research_sessions_status",
         ),
         CheckConstraint(
@@ -798,6 +804,10 @@ class ResearchSessionRecord(Base):
         nullable=True,
     )
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failure_stage: Mapped[str | None] = mapped_column(String(128))
+    failure_error: Mapped[str | None] = mapped_column(String)
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    transition_log: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

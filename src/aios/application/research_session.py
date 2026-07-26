@@ -5,7 +5,8 @@ from datetime import datetime, timedelta
 from pydantic import ValidationError
 
 from aios.adapters.storage import Storage
-from aios.kernel.base import ensure_utc, utc_now
+from aios.application.research_lifecycle import ResearchLifecycleService
+from aios.kernel.base import ensure_utc
 from aios.kernel.enums import ResearchSessionStatus, WatchlistStatus
 from aios.kernel.errors import (
     DuplicateEntityError,
@@ -74,6 +75,12 @@ class ResearchSessionService:
             self._storage.save(session)
         except ValidationError:
             raise
+        if unique_evidence_ids:
+            return ResearchLifecycleService(self._storage).transition(
+                session,
+                ResearchSessionStatus.EVIDENCE_READY,
+                reason="initial evidence attached",
+            )
         return session
 
     def get_session(self, session_id: str) -> ResearchSession:
@@ -106,15 +113,11 @@ class ResearchSessionService:
         if session.status is ResearchSessionStatus.CANCELLED:
             msg = f"ResearchSession {session_id} is already cancelled"
             raise InvalidStateTransitionError(msg)
-        cancelled = session.model_copy(
-            update={
-                "status": ResearchSessionStatus.CANCELLED,
-                "cancelled_at": utc_now(),
-                "updated_at": utc_now(),
-            },
+        return ResearchLifecycleService(self._storage).transition(
+            session,
+            ResearchSessionStatus.CANCELLED,
+            reason="manual cancellation",
         )
-        self._storage.replace(cancelled)
-        return cancelled
 
     def _validate_evidence_ids(
         self,

@@ -60,6 +60,29 @@ class ResearchScope(BaseModel):
         return self
 
 
+class ResearchTransitionEvent(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    from_state: ResearchSessionStatus
+    to_state: ResearchSessionStatus
+    transition_time: datetime
+    transition_reason: str = Field(min_length=1)
+
+    @field_validator("transition_time")
+    @classmethod
+    def validate_datetime(cls, value: datetime) -> datetime:
+        return ensure_utc(value)
+
+    @field_validator("transition_reason")
+    @classmethod
+    def normalize_reason(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            msg = "transition_reason must not be empty"
+            raise ValueError(msg)
+        return normalized
+
+
 class ResearchSession(KernelModel):
     id_field: ClassVar[str] = "research_session_id"
 
@@ -69,6 +92,10 @@ class ResearchSession(KernelModel):
     evidence_ids: tuple[str, ...] = ()
     experiment_id: str | None = None
     cancelled_at: datetime | None = None
+    failure_stage: str | None = None
+    failure_error: str | None = None
+    retry_count: int = Field(default=0, ge=0)
+    transition_log: tuple[ResearchTransitionEvent, ...] = ()
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
 
@@ -89,17 +116,18 @@ class ResearchSession(KernelModel):
 
     @model_validator(mode="after")
     def validate_status(self) -> ResearchSession:
-        if self.status is ResearchSessionStatus.CREATED and self.evidence_ids:
-            object.__setattr__(
-                self,
-                "status",
-                ResearchSessionStatus.EVIDENCE_READY,
-            )
         if (
             self.status is ResearchSessionStatus.EVIDENCE_READY
             and not self.evidence_ids
         ):
             msg = "evidence_ready ResearchSession must have Evidence IDs"
+            raise ValueError(msg)
+        if self.status is ResearchSessionStatus.FAILED:
+            if not self.failure_stage or not self.failure_error:
+                msg = "failed ResearchSession must have failure_stage and failure_error"
+                raise ValueError(msg)
+        elif self.failure_stage is not None or self.failure_error is not None:
+            msg = "failure details are only allowed for failed ResearchSession"
             raise ValueError(msg)
         if self.status is ResearchSessionStatus.CANCELLED:
             if self.cancelled_at is None:

@@ -16,6 +16,7 @@ from aios.application.brain003 import DiscussionService
 from aios.application.brain004 import DecisionService
 from aios.application.evidence_bridge import CoreEvidenceBridge
 from aios.application.market_evidence import MarketEvidenceImportService
+from aios.application.research_lifecycle import ResearchLifecycleService
 from aios.application.research_records import ResearchRecordService
 from aios.integrations.evidence import Evidence as BrainEvidence
 from aios.kernel.brain002 import AnalysisTask, SkillExecution, SkillResult
@@ -28,6 +29,7 @@ from aios.kernel.enums import (
     AgentRole,
     ExperimentStatus,
     ResearchConclusion,
+    ResearchSessionStatus,
 )
 from aios.kernel.errors import InvalidStateTransitionError
 from aios.kernel.evidence import Evidence
@@ -113,7 +115,17 @@ class BrainResearchPipeline:
         evidence = self._ensure_evidence(session)
         seed_report = self._ensure_seed_report(session, evidence)
         hypotheses = self._ensure_hypotheses(session, evidence, seed_report)
+        self._transition_session(
+            session,
+            ResearchSessionStatus.HYPOTHESIS_READY,
+            "hypotheses are ready",
+        )
         task = self._ensure_analysis_task(session, evidence, hypotheses)
+        self._transition_session(
+            session,
+            ResearchSessionStatus.SKILLS_RUNNING,
+            "skill analysis started",
+        )
         skill_executions, skill_results = self._run_skills(task, evidence, model)
         if not skill_results:
             msg = "BrainResearchPipeline requires at least one successful SkillResult"
@@ -124,12 +136,22 @@ class BrainResearchPipeline:
             evidence,
             model,
         )
+        self._transition_session(
+            session,
+            ResearchSessionStatus.DISCUSSION_READY,
+            "discussion is ready",
+        )
         decision_execution, decision_result = self._run_decision(
             task,
             skill_results,
             discussion,
             evidence,
             model,
+        )
+        self._transition_session(
+            session,
+            ResearchSessionStatus.DECISION_READY,
+            "decision result is ready",
         )
         decision = self._create_decision(
             session=session,
@@ -164,18 +186,49 @@ class BrainResearchPipeline:
             for evidence_id in session.evidence_ids
         )
         if existing:
+            self._transition_evidence_ready(session)
             return existing
 
+        collecting = self._transition_session(
+            session,
+            ResearchSessionStatus.COLLECTING_EVIDENCE,
+            "evidence collection started",
+        )
         external = self._external_evidence(session)
         market = self._market_evidence(session)
         combined = tuple(dict.fromkeys((*external, *market)))
         if not combined:
             msg = "BrainResearchPipeline requires at least one Evidence"
             raise InvalidStateTransitionError(msg)
-        updated = session.model_copy(update={"evidence_ids": combined})
+        updated = collecting.model_copy(update={"evidence_ids": combined})
         self._storage.replace(updated)
+        self._transition_evidence_ready(updated)
         return tuple(
             self._storage.get(Evidence, evidence_id) for evidence_id in combined
+        )
+
+    def _transition_evidence_ready(self, session: ResearchSession) -> None:
+        latest = self._storage.get(ResearchSession, session.research_session_id)
+        if latest.status in {
+            ResearchSessionStatus.CREATED,
+            ResearchSessionStatus.COLLECTING_EVIDENCE,
+        }:
+            self._transition_session(
+                latest,
+                ResearchSessionStatus.EVIDENCE_READY,
+                "evidence is ready",
+            )
+
+    def _transition_session(
+        self,
+        session: ResearchSession,
+        to_state: ResearchSessionStatus,
+        reason: str,
+    ) -> ResearchSession:
+        return ResearchLifecycleService(self._storage).transition(
+            session.research_session_id,
+            to_state,
+            reason=reason,
         )
 
     def _external_evidence(self, session: ResearchSession) -> tuple[str, ...]:

@@ -79,7 +79,7 @@ def test_research_session_status_semantics_and_unique_evidence() -> None:
     )
 
     ready = ResearchSession(scope=scope, evidence_ids=("ev_1",))
-    assert ready.status is ResearchSessionStatus.EVIDENCE_READY
+    assert ready.status is ResearchSessionStatus.CREATED
 
     with pytest.raises(ValidationError, match="duplicate Evidence"):
         ResearchSession(scope=scope, evidence_ids=("ev_1", "ev_1"))

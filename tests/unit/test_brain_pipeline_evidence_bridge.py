@@ -199,6 +199,17 @@ def test_brain_pipeline_uses_bridged_core_evidence() -> None:
     assert bridged.title == "Legacy title"
     assert all(evidence_id.startswith("ev_") for evidence_id in result.evidence_ids)
 
+    persisted_session = storage.get(type(research_session), research_session.entity_id)
+    assert persisted_session.status.value == "decision_ready"
+    assert [event.to_state.value for event in persisted_session.transition_log] == [
+        "collecting_evidence",
+        "evidence_ready",
+        "hypothesis_ready",
+        "skills_running",
+        "discussion_ready",
+        "decision_ready",
+    ]
+
 
 def _technical_definition() -> SkillDefinition:
     definition = TechnicalTrendSkill().definition

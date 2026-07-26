@@ -81,7 +81,21 @@ class WatchlistStatus(StrEnum):
 
 class ResearchSessionStatus(StrEnum):
     CREATED = "created"
+    COLLECTING_EVIDENCE = "collecting_evidence"
     EVIDENCE_READY = "evidence_ready"
+    HYPOTHESIS_READY = "hypothesis_ready"
+    SKILLS_RUNNING = "skills_running"
+    DISCUSSION_READY = "discussion_ready"
+    RISK_REVIEW = "risk_review"
+    DECISION_READY = "decision_ready"
+    TRADE_PLAN_READY = "trade_plan_ready"
+    WAITING_EXECUTION = "waiting_execution"
+    WAITING_SETTLEMENT = "waiting_settlement"
+    SETTLED = "settled"
+    REVIEWED = "reviewed"
+    LEARNING_PROPOSED = "learning_proposed"
+    COMPLETED = "completed"
+    FAILED = "failed"
     CANCELLED = "cancelled"
 
 

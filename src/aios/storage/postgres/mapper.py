@@ -66,7 +66,7 @@ from aios.kernel.errors import UnsupportedEntityError
 from aios.kernel.evidence import Evidence
 from aios.kernel.experiment import Experiment
 from aios.kernel.learning import Learning
-from aios.kernel.research import ResearchScope, ResearchSession
+from aios.kernel.research import ResearchScope, ResearchSession, ResearchTransitionEvent
 from aios.kernel.research_records import AgentReport, Hypothesis
 from aios.kernel.research_run import ResearchRun, ResearchRunStage, ResearchRunStatus
 from aios.kernel.review import Review
@@ -456,6 +456,12 @@ def to_model(entity: KernelModel) -> Record:
             status=entity.status.value,
             experiment_id=entity.experiment_id,
             cancelled_at=entity.cancelled_at,
+            failure_stage=entity.failure_stage,
+            failure_error=entity.failure_error,
+            retry_count=entity.retry_count,
+            transition_log=[
+                event.model_dump(mode="json") for event in entity.transition_log
+            ],
             created_at=entity.created_at,
             updated_at=entity.updated_at,
             evidence_links=[
@@ -922,6 +928,13 @@ def model_to_entity(model: DeclarativeBase) -> KernelModel:
             evidence_ids=tuple(link.evidence_id for link in model.evidence_links),
             experiment_id=model.experiment_id,
             cancelled_at=_utc(model.cancelled_at) if model.cancelled_at else None,
+            failure_stage=model.failure_stage,
+            failure_error=model.failure_error,
+            retry_count=model.retry_count,
+            transition_log=tuple(
+                ResearchTransitionEvent.model_validate(item)
+                for item in model.transition_log
+            ),
             created_at=_utc(model.created_at),
             updated_at=_utc(model.updated_at),
         )
