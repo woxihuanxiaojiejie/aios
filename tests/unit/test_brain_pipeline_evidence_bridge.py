@@ -207,6 +207,7 @@ def test_brain_pipeline_uses_bridged_core_evidence() -> None:
         "hypothesis_ready",
         "skills_running",
         "discussion_ready",
+        "risk_review",
         "decision_ready",
     ]
 

@@ -142,6 +142,9 @@ class ResearchConclusion(StrEnum):
 
 class RiskVerdict(StrEnum):
     APPROVE = "approve"
+    REDUCE_CONFIDENCE = "reduce_confidence"
+    REDUCE_POSITION = "reduce_position"
+    MODIFY_CONDITIONS = "modify_conditions"
     DOWNGRADE = "downgrade"
     VETO = "veto"
 

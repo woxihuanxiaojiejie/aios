@@ -351,6 +351,17 @@ class InMemoryStorage:
                 return review
         return None
 
+    def get_risk_review_by_decision_result_id(
+        self,
+        decision_result_id: str,
+    ) -> RiskReview | None:
+        self._require_supported(RiskReview)
+        for entity in self._entities[RiskReview].values():
+            review = cast("RiskReview", entity)
+            if review.decision_result_id == decision_result_id:
+                return review
+        return None
+
     def get_decision_assembly_by_proposal_id(
         self,
         proposal_id: str,

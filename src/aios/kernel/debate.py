@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import ClassVar
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from aios.kernel.base import KernelModel, ensure_utc, new_id, utc_now
 from aios.kernel.enums import (
@@ -123,19 +123,40 @@ class RiskReview(KernelModel):
     id_field: ClassVar[str] = "risk_review_id"
 
     risk_review_id: str = Field(default_factory=lambda: new_id("rr_"))
-    proposal_id: str = Field(min_length=1)
+    proposal_id: str | None = Field(default=None, min_length=1)
     verdict: RiskVerdict
     final_conclusion: ResearchConclusion
     final_confidence: float = Field(ge=0, le=1)
     reasons: tuple[str, ...] = Field(min_length=1)
+    confidence_delta: float | None = Field(default=None, ge=-1, le=0)
+    adjusted_position: float | None = Field(default=None, ge=0, le=1)
+    condition_changes: tuple[str, ...] = ()
+    converted_to_no_trade: bool = False
+    research_session_id: str | None = Field(default=None, min_length=1)
+    decision_result_id: str | None = Field(default=None, min_length=1)
+    discussion_result_id: str | None = Field(default=None, min_length=1)
+    skill_result_ids: tuple[str, ...] = ()
+    evidence_ids: tuple[str, ...] = ()
+    supporting_arguments: tuple[str, ...] = ()
+    opposing_arguments: tuple[str, ...] = ()
     created_at: datetime = Field(default_factory=utc_now)
 
-    @field_validator("reasons")
+    @field_validator(
+        "reasons",
+        "condition_changes",
+        "skill_result_ids",
+        "evidence_ids",
+        "supporting_arguments",
+        "opposing_arguments",
+    )
     @classmethod
-    def validate_reasons(cls, value: tuple[str, ...]) -> tuple[str, ...]:
-        normalized = tuple(reason.strip() for reason in value if reason.strip())
-        if not normalized:
-            msg = "RiskReview reasons must not be empty"
+    def validate_unique_text(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(item.strip() for item in value if item.strip())
+        if not normalized and value:
+            msg = "RiskReview values must not be empty"
+            raise ValueError(msg)
+        if len(normalized) != len(set(normalized)):
+            msg = "duplicate RiskReview values are not allowed"
             raise ValueError(msg)
         return normalized
 
@@ -143,6 +164,20 @@ class RiskReview(KernelModel):
     @classmethod
     def validate_datetime(cls, value: datetime) -> datetime:
         return ensure_utc(value)
+
+    @model_validator(mode="after")
+    def validate_risk_contract(self) -> RiskReview:
+        if not self.reasons:
+            msg = "RiskReview reasons must not be empty"
+            raise ValueError(msg)
+        if self.verdict is RiskVerdict.VETO and (
+            not self.converted_to_no_trade
+            or self.final_conclusion
+            not in {ResearchConclusion.NO_TRADE, ResearchConclusion.INVALID}
+        ):
+            msg = "veto RiskReview must convert to no_trade"
+            raise ValueError(msg)
+        return self
 
 
 class DecisionAssemblyRecord(KernelModel):

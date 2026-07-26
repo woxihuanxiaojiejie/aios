@@ -18,6 +18,7 @@ from tests.factories import (
     make_outcome,
     make_research_session,
     make_review,
+    make_risk_review,
     make_watchlist_item,
 )
 from tests.integration.conftest import alembic_config, table_count
@@ -25,7 +26,7 @@ from tests.unit.test_brain004_persistence import decision_execution, decision_re
 
 from aios.application.debate import DebateService
 from aios.kernel.brain004 import DecisionExecution, DecisionResult
-from aios.kernel.debate import DecisionAssemblyRecord
+from aios.kernel.debate import DecisionAssemblyRecord, RiskReview
 from aios.kernel.decision import Decision
 from aios.kernel.enums import (
     AgentReportStatus,
@@ -122,6 +123,78 @@ def test_jsonb_fields_round_trip(migrated_postgres_url: str) -> None:
     assert storage.get(Learning, learning.learning_id).after == {
         "weight": 0.45,
         "tags": ["guidance"],
+    }
+
+
+def test_brain_risk_review_postgres_round_trip(migrated_postgres_url: str) -> None:
+    storage = PostgresStorage(migrated_postgres_url)
+    review = RiskReview(
+        proposal_id=None,
+        verdict=RiskVerdict.MODIFY_CONDITIONS,
+        final_conclusion=ResearchConclusion.BUY,
+        final_confidence=0.55,
+        reasons=("risk reviewed",),
+        confidence_delta=-0.1,
+        adjusted_position=0.25,
+        condition_changes=("wait for confirmation",),
+        converted_to_no_trade=False,
+        research_session_id="rs_00000000-0000-0000-0000-000000000001",
+        decision_result_id="ds_00000000-0000-0000-0000-000000000001",
+        discussion_result_id="dr_00000000-0000-0000-0000-000000000001",
+        skill_result_ids=("sr_00000000-0000-0000-0000-000000000001",),
+        evidence_ids=("ev_00000000-0000-0000-0000-000000000001",),
+        supporting_arguments=("support",),
+        opposing_arguments=("oppose",),
+        created_at=fixed_now(),
+    )
+
+    storage.save(review)
+
+    persisted = storage.get(RiskReview, review.risk_review_id)
+    assert persisted == review
+    assert (
+        storage.get_risk_review_by_decision_result_id(review.decision_result_id or "")
+        == review
+    )
+
+
+def test_all_risk_review_verdicts_persist(migrated_postgres_url: str) -> None:
+    storage = PostgresStorage(migrated_postgres_url)
+
+    for index, verdict in enumerate(
+        (
+            RiskVerdict.APPROVE,
+            RiskVerdict.REDUCE_CONFIDENCE,
+            RiskVerdict.REDUCE_POSITION,
+            RiskVerdict.MODIFY_CONDITIONS,
+            RiskVerdict.VETO,
+        ),
+        start=1,
+    ):
+        review = make_risk_review(
+            risk_review_id=(f"rr_00000000-0000-0000-0000-00000000010{index}"),
+            proposal_id=None,
+        ).model_copy(
+            update={
+                "verdict": verdict,
+                "final_conclusion": ResearchConclusion.NO_TRADE
+                if verdict is RiskVerdict.VETO
+                else ResearchConclusion.BUY,
+                "final_confidence": 0.0 if verdict is RiskVerdict.VETO else 0.5,
+                "converted_to_no_trade": verdict is RiskVerdict.VETO,
+                "decision_result_id": (
+                    f"ds_00000000-0000-0000-0000-00000000010{index}"
+                ),
+            }
+        )
+        storage.save(review)
+
+    assert {review.verdict for review in storage.list(RiskReview)} == {
+        RiskVerdict.APPROVE,
+        RiskVerdict.REDUCE_CONFIDENCE,
+        RiskVerdict.REDUCE_POSITION,
+        RiskVerdict.MODIFY_CONDITIONS,
+        RiskVerdict.VETO,
     }
 
 
@@ -561,3 +634,30 @@ def test_debate_decision_assembly_postgres_round_trip(
     assert isinstance(assembly, DecisionAssemblyRecord)
     assert storage.get(Decision, assembly.decision_id).action.value == "observe"
     assert service.finalize_decision(proposal.proposal_id) == assembly
+
+
+def test_legacy_nullable_assembly_still_reads(migrated_postgres_url: str) -> None:
+    storage = PostgresStorage(migrated_postgres_url)
+    evidence, _experiment, decision, _review, _learning = seed_lifecycle(storage)
+    session = make_research_session(
+        research_session_id="rs_00000000-0000-0000-0000-000000000601",
+        evidence_ids=(evidence.evidence_id,),
+    )
+    storage.save(make_watchlist_item(watchlist_item_id=session.scope.watchlist_item_id))
+    storage.save(session)
+    assembly = DecisionAssemblyRecord(
+        research_session_id=session.research_session_id,
+        debate_id=None,
+        proposal_id=None,
+        risk_review_id=None,
+        decision_id=decision.decision_id,
+        conclusion=ResearchConclusion.BUY,
+        report_ids=(),
+        hypothesis_ids=(),
+        evidence_ids=(evidence.evidence_id,),
+        created_at=fixed_now(),
+    )
+
+    storage.save(assembly)
+
+    assert storage.get(DecisionAssemblyRecord, assembly.assembly_id) == assembly

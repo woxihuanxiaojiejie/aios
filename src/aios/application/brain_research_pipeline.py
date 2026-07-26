@@ -14,6 +14,7 @@ from aios.application.brain002 import (
 )
 from aios.application.brain003 import DiscussionService
 from aios.application.brain004 import DecisionService
+from aios.application.brain_risk_review import RiskReviewService
 from aios.application.evidence_bridge import CoreEvidenceBridge
 from aios.application.market_evidence import MarketEvidenceImportService
 from aios.application.research_lifecycle import ResearchLifecycleService
@@ -22,7 +23,7 @@ from aios.integrations.evidence import Evidence as BrainEvidence
 from aios.kernel.brain002 import AnalysisTask, SkillExecution, SkillResult
 from aios.kernel.brain003 import DiscussionExecution, DiscussionResult
 from aios.kernel.brain004 import DecisionExecution, DecisionResult
-from aios.kernel.debate import DecisionAssemblyRecord
+from aios.kernel.debate import DecisionAssemblyRecord, RiskReview
 from aios.kernel.decision import Decision
 from aios.kernel.enums import (
     Action,
@@ -80,6 +81,7 @@ class BrainResearchPipelineResult:
     discussion_result_id: str
     decision_execution_id: str
     decision_result_id: str
+    risk_review_id: str
     decision_id: str
     assembly_id: str
 
@@ -102,6 +104,19 @@ class BrainResearchPipeline:
         self._brain_evidence_repository = brain_evidence_repository
 
     def run(
+        self,
+        *,
+        session: ResearchSession,
+        model: str,
+        provider: str,
+    ) -> BrainResearchPipelineResult:
+        try:
+            return self._run(session=session, model=model, provider=provider)
+        except Exception as exc:
+            self._record_failure(session, exc)
+            raise
+
+    def _run(
         self,
         *,
         session: ResearchSession,
@@ -150,12 +165,25 @@ class BrainResearchPipeline:
         )
         self._transition_session(
             session,
+            ResearchSessionStatus.RISK_REVIEW,
+            "risk review started",
+        )
+        risk_review = self._ensure_risk_review(
+            session=session,
+            decision_result=decision_result,
+            discussion=discussion,
+            skill_results=skill_results,
+            evidence=evidence,
+        )
+        self._transition_session(
+            session,
             ResearchSessionStatus.DECISION_READY,
-            "decision result is ready",
+            "risk review completed",
         )
         decision = self._create_decision(
             session=session,
             decision_result=decision_result,
+            risk_review=risk_review,
             evidence=evidence,
             model=model,
             provider=provider,
@@ -164,6 +192,7 @@ class BrainResearchPipeline:
             session=session,
             decision=decision,
             decision_result=decision_result,
+            risk_review=risk_review,
             skill_results=skill_results,
             hypotheses=hypotheses,
         )
@@ -176,6 +205,7 @@ class BrainResearchPipeline:
             discussion_result_id=discussion.discussion_result_id,
             decision_execution_id=decision_execution.decision_execution_id,
             decision_result_id=decision_result.decision_result_id,
+            risk_review_id=risk_review.risk_review_id,
             decision_id=decision.decision_id,
             assembly_id=assembly.assembly_id,
         )
@@ -437,11 +467,29 @@ class BrainResearchPipeline:
         self._storage.save(outcome.result)
         return outcome.execution, outcome.result
 
+    def _ensure_risk_review(
+        self,
+        *,
+        session: ResearchSession,
+        decision_result: DecisionResult,
+        discussion: DiscussionResult,
+        skill_results: tuple[SkillResult, ...],
+        evidence: tuple[Evidence, ...],
+    ) -> RiskReview:
+        return RiskReviewService(self._storage).submit_brain_risk_review(
+            session=session,
+            decision_result=decision_result,
+            discussion_result=discussion,
+            skill_results=skill_results,
+            evidence=evidence,
+        )
+
     def _create_decision(
         self,
         *,
         session: ResearchSession,
         decision_result: DecisionResult,
+        risk_review: RiskReview,
         evidence: tuple[Evidence, ...],
         model: str,
         provider: str,
@@ -468,6 +516,7 @@ class BrainResearchPipeline:
                 "decision_result_id": decision_result.decision_result_id,
                 "discussion_result_id": decision_result.discussion_result_id,
                 "skill_result_ids": list(decision_result.skill_result_ids),
+                "risk_review_id": risk_review.risk_review_id,
             },
             status=ExperimentStatus.FINISHED,
             started_at=session.scope.as_of,
@@ -479,13 +528,20 @@ class BrainResearchPipeline:
             Decision(
                 experiment_id=experiment.experiment_id,
                 symbol=session.scope.symbol,
-                action=decision_result.action,
+                action=(
+                    Action.NO_TRADE
+                    if risk_review.converted_to_no_trade
+                    else decision_result.action
+                ),
                 horizon=f"{session.scope.horizon_days}d",
-                confidence=decision_result.confidence,
+                confidence=risk_review.final_confidence,
                 expected_return=0.0,
                 max_expected_loss=0.0,
                 evidence_ids=evidence_ids,
-                reasoning_summary=decision_result.decision_summary,
+                reasoning_summary=(
+                    f"{decision_result.decision_summary} "
+                    f"RiskReview: {'; '.join(risk_review.reasons)}"
+                ),
                 created_at=session.scope.as_of,
                 valid_until=session.scope.valid_until,
             )
@@ -497,19 +553,23 @@ class BrainResearchPipeline:
         session: ResearchSession,
         decision: Decision,
         decision_result: DecisionResult,
+        risk_review: RiskReview,
         skill_results: tuple[SkillResult, ...],
         hypotheses: tuple[Hypothesis, ...],
     ) -> DecisionAssemblyRecord:
         existing = self._existing_assembly(session)
         if existing is not None:
             return existing
+        if not risk_review.risk_review_id:
+            msg = "BRAIN DecisionAssemblyRecord requires RiskReview"
+            raise InvalidStateTransitionError(msg)
         assembly = DecisionAssemblyRecord(
             research_session_id=session.research_session_id,
             debate_id=None,
             proposal_id=None,
-            risk_review_id=None,
+            risk_review_id=risk_review.risk_review_id,
             decision_id=decision.decision_id,
-            conclusion=_conclusion_for_decision(decision.action),
+            conclusion=risk_review.final_conclusion,
             report_ids=tuple(item.result_id for item in skill_results),
             hypothesis_ids=tuple(item.hypothesis_id for item in hypotheses),
             evidence_ids=tuple(decision_result.evidence_refs) or decision.evidence_ids,
@@ -564,8 +624,22 @@ class BrainResearchPipeline:
             discussion_result_id=discussion.discussion_result_id,
             decision_execution_id=decision_execution.decision_execution_id,
             decision_result_id=decision_result.decision_result_id,
+            risk_review_id=assembly.risk_review_id or "",
             decision_id=assembly.decision_id,
             assembly_id=assembly.assembly_id,
+        )
+
+    def _record_failure(self, session: ResearchSession, exc: Exception) -> None:
+        latest = self._storage.get(ResearchSession, session.research_session_id)
+        if latest.status is ResearchSessionStatus.FAILED:
+            return
+        ResearchLifecycleService(self._storage).transition(
+            latest,
+            ResearchSessionStatus.FAILED,
+            reason="brain research pipeline failed",
+            failure_stage=latest.status.value,
+            failure_error=str(exc),
+            increment_retry=True,
         )
 
 

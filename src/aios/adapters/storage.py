@@ -148,6 +148,12 @@ class Storage(Protocol):
     def get_risk_review_by_proposal_id(self, proposal_id: str) -> RiskReview | None:
         """Return the RiskReview for a DecisionProposal if one exists."""
 
+    def get_risk_review_by_decision_result_id(
+        self,
+        decision_result_id: str,
+    ) -> RiskReview | None:
+        """Return the BRAIN RiskReview for a DecisionResult if one exists."""
+
     def get_decision_assembly_by_proposal_id(
         self,
         proposal_id: str,

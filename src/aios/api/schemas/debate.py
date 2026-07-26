@@ -82,15 +82,30 @@ class RiskReviewCreateRequest(ApiSchema):
     final_conclusion: ResearchConclusion
     final_confidence: float = Field(ge=0, le=1)
     reasons: list[str] = Field(min_length=1)
+    confidence_delta: float | None = Field(default=None, ge=-1, le=0)
+    adjusted_position: float | None = Field(default=None, ge=0, le=1)
+    condition_changes: list[str] = Field(default_factory=list)
+    converted_to_no_trade: bool = False
 
 
 class RiskReviewResponse(ApiSchema):
     risk_review_id: str
-    proposal_id: str
+    proposal_id: str | None
     verdict: RiskVerdict
     final_conclusion: ResearchConclusion
     final_confidence: float
     reasons: list[str]
+    confidence_delta: float | None
+    adjusted_position: float | None
+    condition_changes: list[str]
+    converted_to_no_trade: bool
+    research_session_id: str | None
+    decision_result_id: str | None
+    discussion_result_id: str | None
+    skill_result_ids: list[str]
+    evidence_ids: list[str]
+    supporting_arguments: list[str]
+    opposing_arguments: list[str]
     created_at: datetime
 
 
@@ -159,6 +174,17 @@ def risk_review_response(review: RiskReview) -> RiskReviewResponse:
         final_conclusion=review.final_conclusion,
         final_confidence=review.final_confidence,
         reasons=list(review.reasons),
+        confidence_delta=review.confidence_delta,
+        adjusted_position=review.adjusted_position,
+        condition_changes=list(review.condition_changes),
+        converted_to_no_trade=review.converted_to_no_trade,
+        research_session_id=review.research_session_id,
+        decision_result_id=review.decision_result_id,
+        discussion_result_id=review.discussion_result_id,
+        skill_result_ids=list(review.skill_result_ids),
+        evidence_ids=list(review.evidence_ids),
+        supporting_arguments=list(review.supporting_arguments),
+        opposing_arguments=list(review.opposing_arguments),
         created_at=review.created_at,
     )
 

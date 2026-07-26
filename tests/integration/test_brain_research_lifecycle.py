@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+import pytest
 from pydantic import BaseModel
 
 from aios.adapters.llm import LLMStructuredResult
@@ -24,16 +25,23 @@ from aios.integrations.provider_records import (
 from aios.kernel.brain002 import SkillExecution, SkillResult, SkillResultPayload
 from aios.kernel.brain003 import DiscussionResult, DiscussionResultPayload
 from aios.kernel.brain004 import DecisionResult, DecisionResultPayload
-from aios.kernel.debate import DebateRecord, DecisionAssemblyRecord, DecisionProposal
+from aios.kernel.debate import (
+    DebateRecord,
+    DecisionAssemblyRecord,
+    DecisionProposal,
+    RiskReview,
+)
 from aios.kernel.decision import Decision
 from aios.kernel.enums import (
     Action,
     ApprovalStatus,
     DecisionDirection,
     LearningType,
+    ResearchSessionStatus,
     SkillDirection,
 )
 from aios.kernel.learning import Learning
+from aios.kernel.research import ResearchSession
 from aios.kernel.research_records import Hypothesis
 from aios.kernel.settlement import DecisionEvaluation, DecisionOutcome
 from aios.storage.memory import InMemoryStorage
@@ -229,6 +237,32 @@ class FailingVibeAdapter:
         raise AssertionError("default Brain workflow must not call Vibe")
 
 
+def _brain_runner() -> tuple[
+    InMemoryStorage,
+    DecisionLifecycleService,
+    object,
+    CountingBrainLLM,
+    FixtureMarketDataAdapter,
+    FailingVibeAdapter,
+    ResearchRunner,
+]:
+    storage = InMemoryStorage()
+    lifecycle = DecisionLifecycleService(storage)
+    watchlist = WatchlistService(storage).add_item(symbol="600519", market="CN")
+    llm = CountingBrainLLM()
+    market = FixtureMarketDataAdapter()
+    vibe = FailingVibeAdapter()
+    runner = ResearchRunner(
+        lifecycle=lifecycle,
+        market_data_adapter=market,
+        vibe_trading_adapter=vibe,
+        llm_adapter=llm,
+        brain002_registry=default_brain002_registry(),
+        brain_evidence_repository=FakeBrainEvidenceRepository(_brain_evidence()),
+    )
+    return storage, lifecycle, watchlist, llm, market, vibe, runner
+
+
 def test_default_research_runner_executes_brain_lifecycle_and_settles() -> None:
     storage = InMemoryStorage()
     lifecycle = DecisionLifecycleService(storage)
@@ -279,13 +313,15 @@ def test_default_research_runner_executes_brain_lifecycle_and_settles() -> None:
     )
     assert storage.list(DiscussionResult)
     assert storage.list(DecisionResult)
+    reviews = storage.list(RiskReview)
+    assert len(reviews) == 1
     decisions = storage.list(Decision)
     assert decisions
     assemblies = storage.list(DecisionAssemblyRecord)
     assert len(assemblies) == 1
     assert assemblies[0].debate_id is None
     assert assemblies[0].proposal_id is None
-    assert assemblies[0].risk_review_id is None
+    assert assemblies[0].risk_review_id == reviews[0].risk_review_id
     assert set(decisions[0].evidence_ids).issubset(set(assemblies[0].evidence_ids))
 
     first = ResearchSettlementService(
@@ -313,6 +349,88 @@ def test_default_research_runner_executes_brain_lifecycle_and_settles() -> None:
     )
     assert weight_learning.after["application_mode"] == "proposal_only"
     assert len(storage.list(DecisionAssemblyRecord)) == 1
+
+
+def test_brain_pipeline_creates_risk_review_before_formal_decision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    storage, _lifecycle, watchlist, _llm, _market, vibe, runner = _brain_runner()
+
+    def fail_create_decision(*args: object, **kwargs: object) -> object:
+        raise RuntimeError("formal decision failed")
+
+    monkeypatch.setattr(
+        "aios.application.brain_research_pipeline."
+        "BrainResearchPipeline._create_decision",
+        fail_create_decision,
+    )
+
+    with pytest.raises(RuntimeError, match="formal decision failed"):
+        runner.run_research(
+            watchlist_item_id=watchlist.watchlist_item_id,
+            horizon_days=3,
+            as_of=AS_OF + timedelta(hours=3),
+            workflow="investment_committee",
+            provider="fake",
+            model="fake/model",
+        )
+
+    assert vibe.calls == 0
+    assert len(storage.list(RiskReview)) == 1
+    assert storage.list(Decision) == []
+    assert storage.list(DecisionAssemblyRecord) == []
+    session = storage.list(ResearchSession)[0]
+    assert session.status is ResearchSessionStatus.FAILED
+    assert session.failure_stage == ResearchSessionStatus.DECISION_READY.value
+    assert session.failure_error == "formal decision failed"
+    assert session.retry_count == 1
+
+
+def test_brain_pipeline_reuses_existing_risk_review_on_replay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    storage, _lifecycle, watchlist, _llm, _market, _vibe, runner = _brain_runner()
+    from aios.application.brain_risk_review import RiskReviewService
+
+    calls = 0
+    real_submit = RiskReviewService.submit_brain_risk_review
+
+    def counted_submit(
+        self: RiskReviewService,
+        *args: object,
+        **kwargs: object,
+    ) -> RiskReview:
+        nonlocal calls
+        calls += 1
+        return real_submit(self, *args, **kwargs)
+
+    monkeypatch.setattr(
+        RiskReviewService,
+        "submit_brain_risk_review",
+        counted_submit,
+    )
+
+    first = runner.run_research(
+        watchlist_item_id=watchlist.watchlist_item_id,
+        horizon_days=3,
+        as_of=AS_OF + timedelta(hours=4),
+        workflow="investment_committee",
+        provider="fake",
+        model="fake/model",
+    )
+    review = storage.list(RiskReview)[0]
+    replay = runner.run_research(
+        watchlist_item_id=watchlist.watchlist_item_id,
+        horizon_days=3,
+        as_of=AS_OF + timedelta(hours=4),
+        workflow="investment_committee",
+        provider="fake",
+        model="fake/model",
+    )
+
+    assert replay.run_id == first.run_id
+    assert storage.list(RiskReview)[0].risk_review_id == review.risk_review_id
+    assert calls == 1
 
 
 def _brain_evidence() -> tuple[BrainEvidence, ...]:

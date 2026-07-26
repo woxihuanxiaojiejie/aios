@@ -47,6 +47,13 @@ _ACTIVE_TRANSITIONS: dict[ResearchSessionStatus, frozenset[ResearchSessionStatus
     ),
     ResearchSessionStatus.DISCUSSION_READY: frozenset(
         {
+            ResearchSessionStatus.RISK_REVIEW,
+            ResearchSessionStatus.CANCELLED,
+            ResearchSessionStatus.FAILED,
+        }
+    ),
+    ResearchSessionStatus.RISK_REVIEW: frozenset(
+        {
             ResearchSessionStatus.DECISION_READY,
             ResearchSessionStatus.CANCELLED,
             ResearchSessionStatus.FAILED,
@@ -63,7 +70,6 @@ _ACTIVE_TRANSITIONS: dict[ResearchSessionStatus, frozenset[ResearchSessionStatus
 }
 _DISABLED_FUTURE_STATES = frozenset(
     {
-        ResearchSessionStatus.RISK_REVIEW,
         ResearchSessionStatus.TRADE_PLAN_READY,
         ResearchSessionStatus.WAITING_EXECUTION,
         ResearchSessionStatus.WAITING_SETTLEMENT,

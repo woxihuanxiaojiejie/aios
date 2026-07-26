@@ -30,6 +30,14 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.execute(
+        "delete from research_settlement_records "
+        "where debate_id is null or proposal_id is null or risk_review_id is null"
+    )
+    op.execute(
+        "delete from decision_assembly_records "
+        "where debate_id is null or proposal_id is null or risk_review_id is null"
+    )
     for table_name in ("research_settlement_records", "decision_assembly_records"):
         for column_name in ("debate_id", "proposal_id", "risk_review_id"):
             op.alter_column(

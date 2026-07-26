@@ -524,6 +524,23 @@ class PostgresStorage:
         finally:
             session.close()
 
+    def get_risk_review_by_decision_result_id(
+        self,
+        decision_result_id: str,
+    ) -> RiskReview | None:
+        session = self._session_factory()
+        try:
+            statement = select(RiskReviewRecord).where(
+                RiskReviewRecord.decision_result_id == decision_result_id
+            )
+            model = session.scalars(statement).one_or_none()
+            return cast("RiskReview", model_to_entity(model)) if model else None
+        except SQLAlchemyError as exc:
+            msg = f"failed to get RiskReview for {decision_result_id}"
+            raise StorageOperationError(msg) from exc
+        finally:
+            session.close()
+
     def get_decision_assembly_by_proposal_id(
         self,
         proposal_id: str,

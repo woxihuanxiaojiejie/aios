@@ -175,6 +175,10 @@ class DebateService:
         final_conclusion: ResearchConclusion,
         final_confidence: float,
         reasons: list[str] | tuple[str, ...],
+        confidence_delta: float | None = None,
+        adjusted_position: float | None = None,
+        condition_changes: list[str] | tuple[str, ...] = (),
+        converted_to_no_trade: bool = False,
     ) -> RiskReview:
         proposal = self._storage.get(DecisionProposal, proposal_id)
         if self._storage.get_risk_review_by_proposal_id(proposal_id) is not None:
@@ -187,6 +191,10 @@ class DebateService:
             final_conclusion=final_conclusion,
             final_confidence=final_confidence,
             reasons=tuple(reasons),
+            confidence_delta=confidence_delta,
+            adjusted_position=adjusted_position,
+            condition_changes=tuple(condition_changes),
+            converted_to_no_trade=converted_to_no_trade or verdict is RiskVerdict.VETO,
         )
         self._storage.save(review)
         return review

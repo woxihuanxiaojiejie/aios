@@ -1145,7 +1145,8 @@ class RiskReviewRecord(Base):
     __tablename__ = "risk_reviews"
     __table_args__ = (
         CheckConstraint(
-            "verdict in ('approve', 'downgrade', 'veto')",
+            "verdict in ('approve', 'reduce_confidence', 'reduce_position', "
+            "'modify_conditions', 'downgrade', 'veto')",
             "ck_risk_reviews_verdict",
         ),
         CheckConstraint(
@@ -1158,18 +1159,33 @@ class RiskReviewRecord(Base):
             "ck_risk_reviews_final_confidence",
         ),
         UniqueConstraint("proposal_id", name="uq_risk_reviews_proposal_id"),
+        UniqueConstraint(
+            "decision_result_id",
+            name="uq_risk_reviews_decision_result_id",
+        ),
     )
 
     risk_review_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    proposal_id: Mapped[str] = mapped_column(
+    proposal_id: Mapped[str | None] = mapped_column(
         String(64),
         ForeignKey("decision_proposals.proposal_id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
     )
     verdict: Mapped[str] = mapped_column(String(32), nullable=False)
     final_conclusion: Mapped[str] = mapped_column(String(32), nullable=False)
     final_confidence: Mapped[float] = mapped_column(Float, nullable=False)
     reasons: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    confidence_delta: Mapped[float | None] = mapped_column(Float)
+    adjusted_position: Mapped[float | None] = mapped_column(Float)
+    condition_changes: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    converted_to_no_trade: Mapped[bool] = mapped_column(nullable=False)
+    research_session_id: Mapped[str | None] = mapped_column(String(64))
+    decision_result_id: Mapped[str | None] = mapped_column(String(64))
+    discussion_result_id: Mapped[str | None] = mapped_column(String(64))
+    skill_result_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    evidence_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    supporting_arguments: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    opposing_arguments: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
