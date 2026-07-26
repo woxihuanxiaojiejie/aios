@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from fastapi.testclient import TestClient
@@ -10,7 +10,12 @@ from aios.api.app import create_app
 from aios.storage.memory import InMemoryStorage
 from aios.vibe_trading.output_mapper import VibeTradingRawResult
 
-AS_OF = datetime(2026, 7, 21, 10, 0, tzinfo=UTC)
+AS_OF = datetime.now(UTC).replace(
+    hour=8,
+    minute=0,
+    second=0,
+    microsecond=0,
+) - timedelta(days=1)
 
 
 def test_research_run_api_creates_gets_and_resumes_completed_run() -> None:

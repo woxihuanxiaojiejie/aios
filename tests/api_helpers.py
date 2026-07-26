@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 
 def now() -> datetime:
-    return datetime(2026, 7, 19, 8, 0, tzinfo=UTC)
+    return datetime.now(UTC).replace(microsecond=0)
 
 
 def evidence_payload(**overrides: Any) -> dict[str, Any]:

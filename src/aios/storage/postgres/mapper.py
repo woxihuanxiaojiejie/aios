@@ -13,6 +13,14 @@ from aios.kernel.brain002 import (
     SkillResult,
     TokenUsage,
 )
+from aios.kernel.brain003 import (
+    ConflictReview,
+    CounterArgument,
+    DiscussionExecution,
+    DiscussionResult,
+    EvidenceReview,
+    RevisionSuggestion,
+)
 from aios.kernel.debate import (
     DebateRecord,
     DebateStatement,
@@ -71,6 +79,8 @@ from aios.storage.postgres.models import (
     DecisionOutcomeRecord,
     DecisionProposalRecord,
     DecisionRecord,
+    DiscussionExecutionRecord,
+    DiscussionResultRecord,
     EvidenceRecord,
     ExperimentRecord,
     HypothesisEvidenceRecord,
@@ -113,6 +123,8 @@ type Record = (
     | AnalysisTaskRecord
     | SkillExecutionRecord
     | SkillResultRecord
+    | DiscussionExecutionRecord
+    | DiscussionResultRecord
 )
 
 
@@ -184,6 +196,45 @@ def to_model(entity: KernelModel) -> Record:
             missing_information=list(entity.missing_information),
             reasoning_summary=entity.reasoning_summary,
             raw_output=entity.raw_output,
+            created_at=entity.created_at,
+        )
+    if isinstance(entity, DiscussionExecution):
+        return DiscussionExecutionRecord(
+            discussion_execution_id=entity.discussion_execution_id,
+            task_id=entity.task_id,
+            skill_result_ids=list(entity.skill_result_ids),
+            started_at=entity.started_at,
+            finished_at=entity.finished_at,
+            status=entity.status.value,
+            provider=entity.provider,
+            model=entity.model,
+            prompt_version=entity.prompt_version,
+            token_usage=entity.token_usage.model_dump(mode="json"),
+            latency_ms=entity.latency_ms,
+            retry_count=entity.retry_count,
+            raw_response=entity.raw_response,
+            parsed_response=entity.parsed_response,
+            error=entity.error,
+            created_at=entity.created_at,
+        )
+    if isinstance(entity, DiscussionResult):
+        return DiscussionResultRecord(
+            discussion_result_id=entity.discussion_result_id,
+            discussion_execution_id=entity.discussion_execution_id,
+            task_id=entity.task_id,
+            skill_result_ids=list(entity.skill_result_ids),
+            conflicts=[item.model_dump(mode="json") for item in entity.conflicts],
+            evidence_reviews=[
+                item.model_dump(mode="json") for item in entity.evidence_reviews
+            ],
+            counter_arguments=[
+                item.model_dump(mode="json") for item in entity.counter_arguments
+            ],
+            revision_suggestions=[
+                item.model_dump(mode="json") for item in entity.revision_suggestions
+            ],
+            discussion_summary=entity.discussion_summary,
+            discussion_confidence=entity.discussion_confidence,
             created_at=entity.created_at,
         )
     if isinstance(entity, Evidence):
@@ -547,6 +598,48 @@ def model_to_entity(model: DeclarativeBase) -> KernelModel:
             raw_output=model.raw_output,
             created_at=_utc(model.created_at),
         )
+    if isinstance(model, DiscussionExecutionRecord):
+        return DiscussionExecution(
+            discussion_execution_id=model.discussion_execution_id,
+            task_id=model.task_id,
+            skill_result_ids=tuple(model.skill_result_ids),
+            started_at=_utc(model.started_at),
+            finished_at=_utc(model.finished_at) if model.finished_at else None,
+            status=SkillExecutionStatus(model.status),
+            provider=model.provider,
+            model=model.model,
+            prompt_version=model.prompt_version,
+            token_usage=TokenUsage.model_validate(model.token_usage),
+            latency_ms=model.latency_ms,
+            retry_count=model.retry_count,
+            raw_response=model.raw_response,
+            parsed_response=model.parsed_response,
+            error=model.error,
+            created_at=_utc(model.created_at),
+        )
+    if isinstance(model, DiscussionResultRecord):
+        return DiscussionResult(
+            discussion_result_id=model.discussion_result_id,
+            discussion_execution_id=model.discussion_execution_id,
+            task_id=model.task_id,
+            skill_result_ids=tuple(model.skill_result_ids),
+            conflicts=tuple(
+                ConflictReview.model_validate(item) for item in model.conflicts
+            ),
+            evidence_reviews=tuple(
+                EvidenceReview.model_validate(item) for item in model.evidence_reviews
+            ),
+            counter_arguments=tuple(
+                CounterArgument.model_validate(item) for item in model.counter_arguments
+            ),
+            revision_suggestions=tuple(
+                RevisionSuggestion.model_validate(item)
+                for item in model.revision_suggestions
+            ),
+            discussion_summary=model.discussion_summary,
+            discussion_confidence=model.discussion_confidence,
+            created_at=_utc(model.created_at),
+        )
     if isinstance(model, EvidenceRecord):
         return Evidence(
             evidence_id=model.evidence_id,
@@ -823,6 +916,10 @@ def model_for_entity_type(entity_type: type[KernelModel]) -> type[Record]:
         return SkillExecutionRecord
     if entity_type is SkillResult:
         return SkillResultRecord
+    if entity_type is DiscussionExecution:
+        return DiscussionExecutionRecord
+    if entity_type is DiscussionResult:
+        return DiscussionResultRecord
     if entity_type is Evidence:
         return EvidenceRecord
     if entity_type is Experiment:
@@ -872,6 +969,10 @@ def id_column_for_model(model_type: type[Record]) -> Any:
         return SkillExecutionRecord.execution_id
     if model_type is SkillResultRecord:
         return SkillResultRecord.result_id
+    if model_type is DiscussionExecutionRecord:
+        return DiscussionExecutionRecord.discussion_execution_id
+    if model_type is DiscussionResultRecord:
+        return DiscussionResultRecord.discussion_result_id
     if model_type is EvidenceRecord:
         return EvidenceRecord.evidence_id
     if model_type is ExperimentRecord:
