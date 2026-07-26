@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import time
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
 import pytest
+from fastapi.testclient import TestClient
 from pydantic import BaseModel
 from tests.factories import (
     make_agent_report,
@@ -16,8 +18,10 @@ from tests.factories import (
 
 from aios.adapters.llm import LLMStructuredResult
 from aios.adapters.market_data import Adjustment, MarketBar
+from aios.api.app import create_app
 from aios.application.debate import DebateService
 from aios.application.research_settlement import ResearchSettlementService
+from aios.application.research_settlement_worker import ResearchSettlementWorker
 from aios.kernel.base import KernelModel
 from aios.kernel.decision import Decision
 from aios.kernel.enums import (
@@ -30,6 +34,7 @@ from aios.kernel.enums import (
 )
 from aios.kernel.errors import DecisionNotReadyForSettlementError
 from aios.kernel.learning import Learning
+from aios.kernel.research import ResearchScope, ResearchSession
 from aios.kernel.settlement import DecisionEvaluation, DecisionOutcome
 from aios.storage.memory import InMemoryStorage
 from aios.workflows.decision_lifecycle import DecisionLifecycleService
@@ -436,6 +441,90 @@ def test_research_settlement_retry_recovers_missing_learning_proposal() -> None:
     }
     assert len(storage.list(Learning)) == 2
     assert len(result.record.learning_ids) == 2
+
+
+def test_research_settlement_worker_automatically_scans_due_assemblies() -> None:
+    storage, decision = seed_due_research_decision()
+    adapter = FixtureMarketDataAdapter(
+        [
+            market_bar(decision.created_at.date(), "10.00"),
+            market_bar(decision.valid_until.date() + timedelta(days=1), "10.50"),
+        ]
+    )
+    worker = ResearchSettlementWorker(
+        storage=storage,
+        market_data_adapter=adapter,
+    )
+
+    first = worker.run_once(as_of=datetime.now(UTC))
+    second = worker.run_once(as_of=datetime.now(UTC) + timedelta(minutes=5))
+
+    assert len(first.settled) == 1
+    assert second.settled == ()
+    assert adapter.calls == 1
+    assert len(storage.list(DecisionOutcome)) == 1
+    assert len(storage.list(DecisionEvaluation)) == 1
+    assert len(storage.list(Learning)) == 2
+
+
+def test_app_lifespan_starts_research_settlement_worker() -> None:
+    storage, decision = seed_due_research_decision()
+    adapter = FixtureMarketDataAdapter(
+        [
+            market_bar(decision.created_at.date(), "10.00"),
+            market_bar(decision.valid_until.date() + timedelta(days=1), "10.50"),
+        ]
+    )
+
+    with TestClient(
+        create_app(
+            storage=storage,
+            market_data_adapter=adapter,
+            enable_research_settlement_worker=True,
+            research_settlement_interval_seconds=60,
+        )
+    ):
+        deadline = time.monotonic() + 2
+        while len(storage.list(Learning)) < 2 and time.monotonic() < deadline:
+            time.sleep(0.01)
+
+    assert adapter.calls == 1
+    assert len(storage.list(DecisionOutcome)) == 1
+    assert len(storage.list(DecisionEvaluation)) == 1
+    assert len(storage.list(Learning)) == 2
+
+
+def seed_due_research_decision() -> tuple[InMemoryStorage, Decision]:
+    storage, _assembly_id, decision = seed_finalized_research_decision()
+    now = datetime.now(UTC).replace(microsecond=0)
+    created_at = now - timedelta(days=4)
+    valid_until = now - timedelta(days=1)
+    session = storage.get(
+        ResearchSession,
+        "rs_00000000-0000-0000-0000-000000000001",
+    )
+    storage.replace(
+        session.model_copy(
+            update={
+                "scope": ResearchScope(
+                    **{
+                        **session.scope.model_dump(),
+                        "as_of": created_at,
+                        "valid_until": valid_until,
+                    }
+                )
+            }
+        )
+    )
+    storage.replace(
+        decision.model_copy(
+            update={
+                "created_at": created_at,
+                "valid_until": valid_until,
+            }
+        )
+    )
+    return storage, storage.get(Decision, decision.decision_id)
 
 
 def test_research_settlement_uses_session_valid_until_for_readiness() -> None:
