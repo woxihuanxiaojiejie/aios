@@ -3,8 +3,14 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any
 
+from aios.adapters.llm import LLMAdapter
 from aios.adapters.market_data import Adjustment, MarketDataAdapter
 from aios.adapters.vibe_trading import VibeTradingResearchAdapter
+from aios.application.brain002 import SkillRegistry
+from aios.application.brain_research_pipeline import (
+    BrainEvidenceRepository,
+    BrainResearchPipeline,
+)
 from aios.application.debate import DebateService
 from aios.application.market_evidence import MarketEvidenceImportService
 from aios.application.research_records import ResearchRecordService
@@ -36,11 +42,17 @@ class ResearchRunner:
         lifecycle: DecisionLifecycleService,
         market_data_adapter: MarketDataAdapter,
         vibe_trading_adapter: VibeTradingResearchAdapter,
+        llm_adapter: LLMAdapter | None = None,
+        brain002_registry: SkillRegistry | None = None,
+        brain_evidence_repository: BrainEvidenceRepository | None = None,
     ) -> None:
         self._lifecycle = lifecycle
         self._storage = lifecycle.storage
         self._market_data_adapter = market_data_adapter
         self._vibe_trading_adapter = vibe_trading_adapter
+        self._llm_adapter = llm_adapter
+        self._brain002_registry = brain002_registry
+        self._brain_evidence_repository = brain_evidence_repository
 
     def run_research(
         self,
@@ -78,6 +90,9 @@ class ResearchRunner:
     def _execute(self, run: ResearchRun) -> ResearchRun:
         self._replace_run(run)
         try:
+            if run.workflow != "legacy_vibe":
+                self._execute_brain(run)
+                return self._mark_completed(run)
             session = self._ensure_session(run)
             vibe_result = self._ensure_vibe_result(run, session)
             reports = self._ensure_agent_reports(run, session, vibe_result)
@@ -101,7 +116,41 @@ class ResearchRunner:
             self._replace_run(failed)
             raise
 
-    def _ensure_session(self, run: ResearchRun) -> ResearchSession:
+    def _execute_brain(self, run: ResearchRun) -> None:
+        self._set_stage(run, "session")
+        session = self._ensure_session(run, skip_evidence=True)
+        if self._llm_adapter is None:
+            msg = "Brain research workflow requires an LLM adapter"
+            raise InvalidStateTransitionError(msg)
+        if self._brain002_registry is None:
+            msg = "Brain research workflow requires a BRAIN-002 registry"
+            raise InvalidStateTransitionError(msg)
+        self._set_stage_for_session(session.research_session_id, "evidence")
+        result = BrainResearchPipeline(
+            lifecycle=self._lifecycle,
+            market_data_adapter=self._market_data_adapter,
+            llm_adapter=self._llm_adapter,
+            brain002_registry=self._brain002_registry,
+            brain_evidence_repository=self._brain_evidence_repository,
+        ).run(
+            session=session,
+            model=str(run.input_params["model"]),
+            provider=str(run.input_params["provider"]),
+        )
+        updated = self._storage.get(ResearchRun, run.run_id).model_copy(
+            update={
+                "raw_output_reference": f"brain:{result.decision_result_id}",
+                "updated_at": utc_now(),
+            }
+        )
+        self._replace_run(updated)
+
+    def _ensure_session(
+        self,
+        run: ResearchRun,
+        *,
+        skip_evidence: bool = False,
+    ) -> ResearchSession:
         self._set_stage(run, "session")
         as_of = _param_datetime(run, "as_of")
         horizon_days = int(run.input_params["horizon_days"])
@@ -112,7 +161,7 @@ class ResearchRunner:
         )
         if existing is not None:
             return existing
-        evidence_ids = self._ensure_evidence_ids(run)
+        evidence_ids = () if skip_evidence else self._ensure_evidence_ids(run)
         try:
             session = ResearchSessionService(self._storage).create_session(
                 watchlist_item_id=run.watchlist_item_id,

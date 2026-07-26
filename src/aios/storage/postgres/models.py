@@ -577,20 +577,20 @@ class ResearchSettlementRecordModel(Base):
         ForeignKey("research_sessions.id", ondelete="RESTRICT"),
         nullable=False,
     )
-    debate_id: Mapped[str] = mapped_column(
+    debate_id: Mapped[str | None] = mapped_column(
         String(64),
         ForeignKey("debate_records.debate_id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
     )
-    proposal_id: Mapped[str] = mapped_column(
+    proposal_id: Mapped[str | None] = mapped_column(
         String(64),
         ForeignKey("decision_proposals.proposal_id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
     )
-    risk_review_id: Mapped[str] = mapped_column(
+    risk_review_id: Mapped[str | None] = mapped_column(
         String(64),
         ForeignKey("risk_reviews.risk_review_id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
     )
     decision_id: Mapped[str] = mapped_column(
         String(64),
@@ -1154,20 +1154,20 @@ class DecisionAssemblyRecordModel(Base):
 
     assembly_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     research_session_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    debate_id: Mapped[str] = mapped_column(
+    debate_id: Mapped[str | None] = mapped_column(
         String(64),
         ForeignKey("debate_records.debate_id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
     )
-    proposal_id: Mapped[str] = mapped_column(
+    proposal_id: Mapped[str | None] = mapped_column(
         String(64),
         ForeignKey("decision_proposals.proposal_id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
     )
-    risk_review_id: Mapped[str] = mapped_column(
+    risk_review_id: Mapped[str | None] = mapped_column(
         String(64),
         ForeignKey("risk_reviews.risk_review_id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
     )
     decision_id: Mapped[str] = mapped_column(
         String(64),

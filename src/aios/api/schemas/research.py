@@ -128,9 +128,9 @@ class ResearchSettlementRecordResponse(ApiSchema):
     research_settlement_id: str
     assembly_id: str
     research_session_id: str
-    debate_id: str
-    proposal_id: str
-    risk_review_id: str
+    debate_id: str | None
+    proposal_id: str | None
+    risk_review_id: str | None
     decision_id: str
     outcome_id: str
     evaluation_id: str

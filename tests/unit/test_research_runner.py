@@ -42,7 +42,7 @@ def test_research_runner_completes_auto_research_and_is_idempotent() -> None:
         watchlist_item_id=watchlist.watchlist_item_id,
         horizon_days=3,
         as_of=AS_OF,
-        workflow="investment_committee",
+        workflow="legacy_vibe",
         provider="fake",
         model="fake-model",
     )
@@ -50,7 +50,7 @@ def test_research_runner_completes_auto_research_and_is_idempotent() -> None:
         watchlist_item_id=watchlist.watchlist_item_id,
         horizon_days=3,
         as_of=AS_OF,
-        workflow="investment_committee",
+        workflow="legacy_vibe",
         provider="fake",
         model="fake-model",
     )
@@ -81,7 +81,7 @@ def test_research_runner_rejects_unmappable_vibe_output_without_reports() -> Non
             watchlist_item_id=watchlist.watchlist_item_id,
             horizon_days=3,
             as_of=AS_OF,
-            workflow="investment_committee",
+            workflow="legacy_vibe",
             provider="fake",
             model="fake-model",
         )
@@ -106,7 +106,7 @@ def test_research_runner_resume_after_vibe_failure() -> None:
             watchlist_item_id=watchlist.watchlist_item_id,
             horizon_days=3,
             as_of=AS_OF,
-            workflow="investment_committee",
+            workflow="legacy_vibe",
             provider="fake",
             model="fake-model",
         )

@@ -150,9 +150,9 @@ class DecisionAssemblyRecord(KernelModel):
 
     assembly_id: str = Field(default_factory=lambda: new_id("da_"))
     research_session_id: str = Field(min_length=1)
-    debate_id: str = Field(min_length=1)
-    proposal_id: str = Field(min_length=1)
-    risk_review_id: str = Field(min_length=1)
+    debate_id: str | None = Field(default=None, min_length=1)
+    proposal_id: str | None = Field(default=None, min_length=1)
+    risk_review_id: str | None = Field(default=None, min_length=1)
     decision_id: str = Field(min_length=1)
     conclusion: ResearchConclusion
     report_ids: tuple[str, ...]

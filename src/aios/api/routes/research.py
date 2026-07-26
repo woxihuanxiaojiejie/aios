@@ -8,6 +8,8 @@ from fastapi import APIRouter, Query, status
 from aios.adapters.market_data import Adjustment
 from aios.api.dependencies import (
     BaoStockMarketDataAdapterDep,
+    Brain002RegistryDep,
+    BrainEvidenceRepositoryDep,
     GenerationRecorderDep,
     LifecycleDep,
     LLMAdapterDep,
@@ -124,11 +126,17 @@ def run_research(
     lifecycle: LifecycleDep,
     adapter: MarketDataAdapterDep,
     vibe_adapter: VibeTradingAdapterDep,
+    llm_adapter: LLMAdapterDep,
+    registry: Brain002RegistryDep,
+    brain_evidence_repository: BrainEvidenceRepositoryDep,
 ) -> ResearchRunResponse:
     run = ResearchRunner(
         lifecycle=lifecycle,
         market_data_adapter=adapter,
         vibe_trading_adapter=vibe_adapter,
+        llm_adapter=llm_adapter,
+        brain002_registry=registry,
+        brain_evidence_repository=brain_evidence_repository,
     ).run_research(**request.model_dump())
     return research_run_response(run)
 
@@ -148,11 +156,17 @@ def resume_research_run(
     lifecycle: LifecycleDep,
     adapter: MarketDataAdapterDep,
     vibe_adapter: VibeTradingAdapterDep,
+    llm_adapter: LLMAdapterDep,
+    registry: Brain002RegistryDep,
+    brain_evidence_repository: BrainEvidenceRepositoryDep,
 ) -> ResearchRunResponse:
     run = ResearchRunner(
         lifecycle=lifecycle,
         market_data_adapter=adapter,
         vibe_trading_adapter=vibe_adapter,
+        llm_adapter=llm_adapter,
+        brain002_registry=registry,
+        brain_evidence_repository=brain_evidence_repository,
     ).resume_research(run_id)
     return research_run_response(run)
 

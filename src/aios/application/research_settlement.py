@@ -15,6 +15,9 @@ from aios.application.decision_settlement import (
     DecisionSettlementService,
 )
 from aios.kernel.base import utc_now
+from aios.kernel.brain002 import SkillResult
+from aios.kernel.brain003 import DiscussionResult
+from aios.kernel.brain004 import DecisionResult
 from aios.kernel.debate import (
     DebateRecord,
     DecisionAssemblyRecord,
@@ -23,9 +26,12 @@ from aios.kernel.debate import (
 )
 from aios.kernel.decision import Decision
 from aios.kernel.enums import (
+    Action,
+    AgentRole,
     EvaluationFinalResult,
     LearningType,
     OutcomeStatus,
+    ResearchConclusion,
 )
 from aios.kernel.errors import DecisionNotReadyForSettlementError
 from aios.kernel.evidence import Evidence
@@ -293,21 +299,43 @@ class ResearchSettlementService:
             Learning(
                 review_id=settlement.review.review_id,
                 learning_type=LearningType.RULE_UPDATE,
-                target=f"research-session:{context.session.research_session_id}:debate-risk-review",
+                target=(
+                    f"research-session:{context.session.research_session_id}:"
+                    "decision-review"
+                ),
                 before={
-                    "proposal_conclusion": context.proposal.conclusion.value,
-                    "risk_final_conclusion": context.risk.final_conclusion.value,
+                    "proposal_conclusion": (
+                        context.proposal.conclusion.value
+                        if context.proposal is not None
+                        else None
+                    ),
+                    "risk_final_conclusion": (
+                        context.risk.final_conclusion.value
+                        if context.risk is not None
+                        else None
+                    ),
+                    "brain_final_conclusion": _context_conclusion(context).value,
+                    "decision_result_id": (
+                        context.decision_result.decision_result_id
+                        if context.decision_result is not None
+                        else None
+                    ),
+                    "discussion_result_id": (
+                        context.discussion_result.discussion_result_id
+                        if context.discussion_result is not None
+                        else None
+                    ),
                 },
                 after={
                     "application_mode": "proposal_only",
                     "status": "pending_approval",
                     "source_refs": source_refs,
-                    "suggestion": "review Debate and RiskReview gates manually",
+                    "suggestion": "review decision and discussion gates manually",
                     "evaluation_final_result": settlement.evaluation.final_result.value,
                 },
                 reason=(
-                    "Debate/RiskReview effect was recorded for audit; no runtime "
-                    "or trading rule was changed automatically."
+                    "Decision review effect was recorded for audit; no runtime or "
+                    "trading rule was changed automatically."
                 ),
             ),
         )
@@ -368,9 +396,13 @@ class ResearchSettlementService:
 class _ResearchContext:
     assembly: DecisionAssemblyRecord
     session: ResearchSession
-    debate: DebateRecord
-    proposal: DecisionProposal
-    risk: RiskReview
+    decision: Decision
+    debate: DebateRecord | None
+    proposal: DecisionProposal | None
+    risk: RiskReview | None
+    decision_result: DecisionResult | None
+    discussion_result: DiscussionResult | None
+    skill_results: tuple[SkillResult, ...]
     evidence: tuple[Evidence, ...]
     hypotheses: tuple[Hypothesis, ...]
     reports: tuple[AgentReport, ...]
@@ -381,23 +413,58 @@ class _ResearchContext:
         lifecycle: DecisionLifecycleService,
         assembly: DecisionAssemblyRecord,
     ) -> _ResearchContext:
+        session = lifecycle.get_entity(ResearchSession, assembly.research_session_id)
+        decision = lifecycle.get_entity(Decision, assembly.decision_id)
+        evidence = tuple(
+            lifecycle.get_entity(Evidence, evidence_id)
+            for evidence_id in assembly.evidence_ids
+        )
+        hypotheses = tuple(
+            lifecycle.get_entity(Hypothesis, hypothesis_id)
+            for hypothesis_id in assembly.hypothesis_ids
+        )
+        if assembly.debate_id and assembly.proposal_id and assembly.risk_review_id:
+            return cls(
+                assembly=assembly,
+                session=session,
+                decision=decision,
+                debate=lifecycle.get_entity(DebateRecord, assembly.debate_id),
+                proposal=lifecycle.get_entity(DecisionProposal, assembly.proposal_id),
+                risk=lifecycle.get_entity(RiskReview, assembly.risk_review_id),
+                decision_result=None,
+                discussion_result=None,
+                skill_results=(),
+                evidence=evidence,
+                hypotheses=hypotheses,
+                reports=tuple(
+                    lifecycle.get_entity(AgentReport, report_id)
+                    for report_id in assembly.report_ids
+                ),
+            )
+        skill_results = tuple(
+            lifecycle.get_entity(SkillResult, result_id)
+            for result_id in assembly.report_ids
+        )
+        decision_result = _matching_decision_result(lifecycle, skill_results)
+        discussion_result = (
+            lifecycle.get_entity(DiscussionResult, decision_result.discussion_result_id)
+            if decision_result is not None
+            else None
+        )
         return cls(
             assembly=assembly,
-            session=lifecycle.get_entity(ResearchSession, assembly.research_session_id),
-            debate=lifecycle.get_entity(DebateRecord, assembly.debate_id),
-            proposal=lifecycle.get_entity(DecisionProposal, assembly.proposal_id),
-            risk=lifecycle.get_entity(RiskReview, assembly.risk_review_id),
-            evidence=tuple(
-                lifecycle.get_entity(Evidence, evidence_id)
-                for evidence_id in assembly.evidence_ids
-            ),
-            hypotheses=tuple(
-                lifecycle.get_entity(Hypothesis, hypothesis_id)
-                for hypothesis_id in assembly.hypothesis_ids
-            ),
+            session=session,
+            decision=decision,
+            debate=None,
+            proposal=None,
+            risk=None,
+            decision_result=decision_result,
+            discussion_result=discussion_result,
+            skill_results=skill_results,
+            evidence=evidence,
+            hypotheses=hypotheses,
             reports=tuple(
-                lifecycle.get_entity(AgentReport, report_id)
-                for report_id in assembly.report_ids
+                _report_from_skill_result(result, session) for result in skill_results
             ),
         )
 
@@ -413,13 +480,92 @@ def _source_refs(
         "review_id": settlement.review.review_id,
         "assembly_id": context.assembly.assembly_id,
         "research_session_id": context.session.research_session_id,
-        "debate_id": context.debate.debate_id,
-        "proposal_id": context.proposal.proposal_id,
-        "risk_review_id": context.risk.risk_review_id,
+        "debate_id": context.debate.debate_id if context.debate else None,
+        "proposal_id": context.proposal.proposal_id if context.proposal else None,
+        "risk_review_id": context.risk.risk_review_id if context.risk else None,
+        "decision_result_id": (
+            context.decision_result.decision_result_id
+            if context.decision_result
+            else None
+        ),
+        "discussion_result_id": (
+            context.discussion_result.discussion_result_id
+            if context.discussion_result
+            else None
+        ),
+        "skill_result_ids": [result.result_id for result in context.skill_results],
         "evidence_ids": list(context.assembly.evidence_ids),
         "report_ids": list(context.assembly.report_ids),
         "hypothesis_ids": list(context.assembly.hypothesis_ids),
     }
+
+
+def _matching_decision_result(
+    lifecycle: DecisionLifecycleService,
+    skill_results: tuple[SkillResult, ...],
+) -> DecisionResult | None:
+    skill_result_ids = {result.result_id for result in skill_results}
+    matches = [
+        result
+        for result in lifecycle.list_entities(DecisionResult)
+        if set(result.skill_result_ids) == skill_result_ids
+    ]
+    return matches[-1] if matches else None
+
+
+def _report_from_skill_result(
+    result: SkillResult,
+    session: ResearchSession,
+) -> AgentReport:
+    return AgentReport(
+        report_id=result.result_id,
+        research_session_id=session.research_session_id,
+        role=AgentRole.TECHNICAL,
+        summary=result.conclusion,
+        stance=result.direction.value,
+        confidence=result.confidence,
+        evidence_ids=tuple(
+            dict.fromkeys(
+                (*result.supporting_evidence_ids, *result.contradicting_evidence_ids)
+            )
+        ),
+        source=result.skill_id,
+        raw_reference=f"skill-result:{result.result_id}",
+        created_at=result.created_at,
+        updated_at=result.created_at,
+    )
+
+
+def _context_conclusion(context: _ResearchContext) -> ResearchConclusion:
+    if context.risk is not None:
+        return context.risk.final_conclusion
+    return {
+        Action.BUY: ResearchConclusion.BUY,
+        Action.SELL: ResearchConclusion.SELL,
+        Action.HOLD: ResearchConclusion.HOLD,
+        Action.OBSERVE: ResearchConclusion.WATCH,
+        Action.NO_TRADE: ResearchConclusion.NO_TRADE,
+    }[context.decision.action]
+
+
+def _context_confidence(context: _ResearchContext) -> float:
+    if context.risk is not None:
+        return context.risk.final_confidence
+    if context.decision_result is not None:
+        return context.decision_result.confidence
+    return context.decision.confidence
+
+
+def _context_thesis(context: _ResearchContext) -> str:
+    if context.proposal is not None:
+        return context.proposal.thesis
+    if context.decision_result is not None:
+        return context.decision_result.decision_summary
+    return context.decision.reasoning_summary
+
+
+def _passed(evaluation: DecisionEvaluation) -> bool:
+    return evaluation.final_result is EvaluationFinalResult.PASS
 
 
 def _learning_prompt_payload(
@@ -450,21 +596,23 @@ def _learning_prompt_payload(
             "review_summary": settlement.review.review_summary,
         },
         "proposal": {
-            "proposal_id": context.proposal.proposal_id,
-            "conclusion": context.proposal.conclusion.value,
-            "confidence": context.proposal.confidence,
-            "thesis": context.proposal.thesis,
+            "proposal_id": context.proposal.proposal_id if context.proposal else None,
+            "conclusion": _context_conclusion(context).value,
+            "confidence": _context_confidence(context),
+            "thesis": _context_thesis(context),
             "supporting_hypothesis_ids": list(
-                context.proposal.supporting_hypothesis_ids
+                _supported_hypothesis_ids(settlement.evaluation, context)
             ),
-            "rejected_hypothesis_ids": list(context.proposal.rejected_hypothesis_ids),
+            "rejected_hypothesis_ids": list(
+                _denied_hypothesis_ids(settlement.evaluation, context)
+            ),
         },
         "risk_review": {
-            "risk_review_id": context.risk.risk_review_id,
-            "verdict": context.risk.verdict.value,
-            "final_conclusion": context.risk.final_conclusion.value,
-            "final_confidence": context.risk.final_confidence,
-            "reasons": list(context.risk.reasons),
+            "risk_review_id": context.risk.risk_review_id if context.risk else None,
+            "verdict": context.risk.verdict.value if context.risk else None,
+            "final_conclusion": _context_conclusion(context).value,
+            "final_confidence": _context_confidence(context),
+            "reasons": list(context.risk.reasons) if context.risk else [],
         },
         "reports": [
             {
@@ -623,7 +771,11 @@ def _research_review(
         if evaluation.final_result is EvaluationFinalResult.PASS
         else "final conclusion not confirmed"
     )
-    debate_effect = _debate_effect(evaluation, context.proposal, context.risk)
+    debate_effect = (
+        _debate_effect(evaluation, context.proposal, context.risk)
+        if context.proposal is not None and context.risk is not None
+        else "brain-native discussion and decision path"
+    )
     summary = (
         f"{base.review_summary}; {correctness}; "
         f"supported hypotheses: {', '.join(supported_hypotheses) or 'none'}; "
@@ -644,6 +796,8 @@ def _supported_hypothesis_ids(
     evaluation: DecisionEvaluation,
     context: _ResearchContext,
 ) -> tuple[str, ...]:
+    if context.proposal is None:
+        return context.assembly.hypothesis_ids if _passed(evaluation) else ()
     if evaluation.final_result is EvaluationFinalResult.PASS:
         return context.proposal.supporting_hypothesis_ids
     return context.proposal.rejected_hypothesis_ids
@@ -653,6 +807,8 @@ def _denied_hypothesis_ids(
     evaluation: DecisionEvaluation,
     context: _ResearchContext,
 ) -> tuple[str, ...]:
+    if context.proposal is None:
+        return () if _passed(evaluation) else context.assembly.hypothesis_ids
     if evaluation.final_result is EvaluationFinalResult.PASS:
         return context.proposal.rejected_hypothesis_ids
     return context.proposal.supporting_hypothesis_ids
@@ -662,6 +818,8 @@ def _stronger_report_ids(
     evaluation: DecisionEvaluation,
     context: _ResearchContext,
 ) -> tuple[str, ...]:
+    if context.proposal is None:
+        return context.assembly.report_ids if _passed(evaluation) else ()
     supported = set(_supported_hypothesis_ids(evaluation, context))
     return tuple(
         report_id
@@ -675,6 +833,8 @@ def _weaker_report_ids(
     evaluation: DecisionEvaluation,
     context: _ResearchContext,
 ) -> tuple[str, ...]:
+    if context.proposal is None:
+        return () if _passed(evaluation) else context.assembly.report_ids
     denied = set(_denied_hypothesis_ids(evaluation, context))
     return tuple(
         report_id
