@@ -136,6 +136,12 @@ POST /api/v1/market-data/akshare/daily-bars/import
 POST /api/v1/market-data/baostock/daily-bars/preview
 POST /api/v1/market-data/baostock/daily-bars/import
 POST /api/v1/decision-generation/generate
+POST /api/v1/research/watchlist
+GET  /api/v1/research/watchlist
+GET  /api/v1/research/watchlist/{item_id}
+PATCH /api/v1/research/watchlist/{item_id}
+POST /api/v1/research/watchlist/{item_id}/archive
+POST /api/v1/research/watchlist/{item_id}/restore
 GET  /api/v1/research/market
 POST /api/v1/research/evidence
 POST /api/v1/research/experiments
@@ -293,9 +299,32 @@ docker compose up --build
 ```
 
 Open `http://127.0.0.1:4173/research`. In Compose mode the backend is published
-at `http://127.0.0.1:18000/api/v1` to avoid collisions with local development
-servers on port 8000. Compose starts PostgreSQL, applies Alembic migrations in
-the backend container, and serves the built frontend.
+at `http://127.0.0.1:8000/api/v1`, matching local development. Compose starts
+PostgreSQL, applies Alembic migrations in the backend container, and serves the
+built frontend.
+
+If port 8000 is already occupied, identify the process before stopping it:
+
+```bash
+ss -ltnp
+docker ps --format 'table {{.ID}}\t{{.Names}}\t{{.Ports}}\t{{.Image}}'
+```
+
+Only stop a process you recognize. For example, if an old local stack owns the
+port, stop that specific container:
+
+```bash
+docker stop ai-quant-platform-v3-backend-1
+```
+
+Smoke-check the current backend before opening the workbench:
+
+```bash
+curl -i http://127.0.0.1:8000/api/v1/evidence
+curl -i -X POST http://127.0.0.1:8000/api/v1/research/watchlist \
+  -H 'content-type: application/json' \
+  -d '{"symbol":"600519","market":"CN","note":"smoke"}'
+```
 
 The workbench displays `REAL MARKET DATA` and `REAL LLM` when it is using the
 production path. A-share symbols use the existing BaoStock adapter format such
