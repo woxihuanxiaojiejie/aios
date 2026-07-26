@@ -5,10 +5,11 @@ services:
       POSTGRES_DB: aios
       POSTGRES_USER: aios
       POSTGRES_PASSWORD: aios
+      PGDATA: /var/lib/postgresql/data/pgdata
     ports:
       - "5432:5432"
-    tmpfs:
-      - /var/lib/postgresql/data:uid=999,gid=999,mode=700
+    volumes:
+      - aios_postgres_data:/var/lib/postgresql/data/pgdata
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U aios -d aios"]
       interval: 5s
@@ -46,3 +47,11 @@ services:
       - "4173:4173"
     depends_on:
       - backend
+
+volumes:
+  aios_postgres_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${AIOS_POSTGRES_VOLUME_DIR:-/tmp/aios-postgres-data}
