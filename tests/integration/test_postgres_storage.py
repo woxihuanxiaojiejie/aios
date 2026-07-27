@@ -23,6 +23,7 @@ from tests.factories import (
 )
 from tests.integration.conftest import alembic_config, table_count
 from tests.unit.test_brain004_persistence import decision_execution, decision_result
+from tests.unit.test_formal_decision_persistence import rich_decision
 
 from aios.application.debate import DebateService
 from aios.kernel.brain004 import DecisionExecution, DecisionResult
@@ -124,6 +125,40 @@ def test_jsonb_fields_round_trip(migrated_postgres_url: str) -> None:
         "weight": 0.45,
         "tags": ["guidance"],
     }
+
+
+def test_rich_decision_postgres_round_trip(migrated_postgres_url: str) -> None:
+    storage = PostgresStorage(migrated_postgres_url)
+    evidence = make_evidence()
+    experiment = make_experiment(evidence.evidence_id)
+    decision = rich_decision().model_copy(
+        update={"experiment_id": experiment.experiment_id}
+    )
+    storage.save(evidence)
+    storage.save(experiment)
+
+    storage.save(decision)
+
+    assert storage.get(Decision, decision.decision_id) == decision
+    assert (
+        storage.get_decision_by_decision_result_id(decision.decision_result_id or "")
+        == decision
+    )
+
+
+def test_legacy_decision_without_rich_fields_still_reads(
+    migrated_postgres_url: str,
+) -> None:
+    storage = PostgresStorage(migrated_postgres_url)
+    evidence, experiment, decision, _review, _learning = seed_lifecycle(storage)
+
+    persisted = storage.get(Decision, decision.decision_id)
+
+    assert persisted.experiment_id == experiment.experiment_id
+    assert persisted.evidence_ids == (evidence.evidence_id,)
+    assert persisted.decision_result_id is None
+    assert persisted.direction is None
+    assert persisted.unavailable_fields == ()
 
 
 def test_brain_risk_review_postgres_round_trip(migrated_postgres_url: str) -> None:

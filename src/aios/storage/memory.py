@@ -158,6 +158,17 @@ class InMemoryStorage:
                 return evaluation
         return None
 
+    def get_decision_by_decision_result_id(
+        self,
+        decision_result_id: str,
+    ) -> Decision | None:
+        self._require_supported(Decision)
+        for entity in self._entities[Decision].values():
+            decision = cast("Decision", entity)
+            if decision.decision_result_id == decision_result_id:
+                return decision
+        return None
+
     def get_review_by_decision_id(self, decision_id: str) -> Review | None:
         self._require_supported(Review)
         for entity in self._entities[Review].values():

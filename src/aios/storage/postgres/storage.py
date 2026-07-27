@@ -17,6 +17,7 @@ from aios.kernel.debate import (
     DecisionProposal,
     RiskReview,
 )
+from aios.kernel.decision import Decision
 from aios.kernel.enums import (
     AgentReportStatus,
     AgentRole,
@@ -54,6 +55,7 @@ from aios.storage.postgres.models import (
     DecisionEvaluationRecord,
     DecisionOutcomeRecord,
     DecisionProposalRecord,
+    DecisionRecord,
     HypothesisRecord,
     ResearchRunRecord,
     ResearchSessionRecord,
@@ -227,6 +229,23 @@ class PostgresStorage:
             return cast("DecisionEvaluation", model_to_entity(model))
         except SQLAlchemyError as exc:
             msg = f"failed to get DecisionEvaluation for decision {decision_id}"
+            raise StorageOperationError(msg) from exc
+        finally:
+            session.close()
+
+    def get_decision_by_decision_result_id(
+        self,
+        decision_result_id: str,
+    ) -> Decision | None:
+        session = self._session_factory()
+        try:
+            statement = select(DecisionRecord).where(
+                DecisionRecord.decision_result_id == decision_result_id
+            )
+            model = session.scalars(statement).one_or_none()
+            return cast("Decision", model_to_entity(model)) if model else None
+        except SQLAlchemyError as exc:
+            msg = f"failed to get Decision for {decision_result_id}"
             raise StorageOperationError(msg) from exc
         finally:
             session.close()

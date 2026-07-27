@@ -352,6 +352,26 @@ def to_model(entity: KernelModel) -> Record:
             status=entity.status.value,
             created_at=entity.created_at,
             valid_until=entity.valid_until,
+            research_session_id=entity.research_session_id,
+            decision_result_id=entity.decision_result_id,
+            risk_review_id=entity.risk_review_id,
+            direction=entity.direction.value if entity.direction else None,
+            original_direction=(
+                entity.original_direction.value if entity.original_direction else None
+            ),
+            target_range=list(entity.target_range) if entity.target_range else None,
+            entry_conditions=list(entity.entry_conditions),
+            invalidation_conditions=list(entity.invalidation_conditions),
+            stop_loss=entity.stop_loss,
+            position_suggestion=entity.position_suggestion,
+            risk_factors=list(entity.risk_factors),
+            supporting_skill_ids=list(entity.supporting_skill_ids),
+            dissenting_opinions=list(entity.dissenting_opinions),
+            market_regime=entity.market_regime,
+            generated_at=entity.generated_at,
+            planned_settlement_at=entity.planned_settlement_at,
+            unavailable_fields=list(entity.unavailable_fields),
+            downgrade_reasons=list(entity.downgrade_reasons),
         )
     if isinstance(entity, DecisionOutcome):
         return DecisionOutcomeRecord(
@@ -832,6 +852,36 @@ def model_to_entity(model: DeclarativeBase) -> KernelModel:
             status=DecisionStatus(model.status),
             created_at=_utc(model.created_at),
             valid_until=_utc(model.valid_until),
+            research_session_id=model.research_session_id,
+            decision_result_id=model.decision_result_id,
+            risk_review_id=model.risk_review_id,
+            direction=DecisionDirection(model.direction) if model.direction else None,
+            original_direction=(
+                DecisionDirection(model.original_direction)
+                if model.original_direction
+                else None
+            ),
+            target_range=(
+                (model.target_range[0], model.target_range[1])
+                if model.target_range
+                else None
+            ),
+            entry_conditions=tuple(model.entry_conditions),
+            invalidation_conditions=tuple(model.invalidation_conditions),
+            stop_loss=model.stop_loss,
+            position_suggestion=model.position_suggestion,
+            risk_factors=tuple(model.risk_factors),
+            supporting_skill_ids=tuple(model.supporting_skill_ids),
+            dissenting_opinions=tuple(model.dissenting_opinions),
+            market_regime=model.market_regime,
+            generated_at=_utc(model.generated_at) if model.generated_at else None,
+            planned_settlement_at=(
+                _utc(model.planned_settlement_at)
+                if model.planned_settlement_at
+                else None
+            ),
+            unavailable_fields=tuple(model.unavailable_fields),
+            downgrade_reasons=tuple(model.downgrade_reasons),
         )
     if isinstance(model, DecisionOutcomeRecord):
         return DecisionOutcome(

@@ -6,7 +6,7 @@ from pydantic import Field, field_validator
 
 from aios.api.schemas.common import ApiSchema, require_timezone
 from aios.kernel.decision import Decision
-from aios.kernel.enums import Action, DecisionStatus
+from aios.kernel.enums import Action, DecisionDirection, DecisionStatus
 
 
 class DecisionCreateRequest(ApiSchema):
@@ -34,13 +34,31 @@ class DecisionResponse(ApiSchema):
     action: Action
     horizon: str
     confidence: float
-    expected_return: float
-    max_expected_loss: float
+    expected_return: float | None
+    max_expected_loss: float | None
     evidence_ids: tuple[str, ...]
     reasoning_summary: str
     status: DecisionStatus
     created_at: datetime
     valid_until: datetime
+    research_session_id: str | None
+    decision_result_id: str | None
+    risk_review_id: str | None
+    direction: DecisionDirection | None
+    original_direction: DecisionDirection | None
+    target_range: tuple[float, float] | None
+    entry_conditions: tuple[str, ...]
+    invalidation_conditions: tuple[str, ...]
+    stop_loss: float | None
+    position_suggestion: float | None
+    risk_factors: tuple[str, ...]
+    supporting_skill_ids: tuple[str, ...]
+    dissenting_opinions: tuple[str, ...]
+    market_regime: str | None
+    generated_at: datetime | None
+    planned_settlement_at: datetime | None
+    unavailable_fields: tuple[str, ...]
+    downgrade_reasons: tuple[str, ...]
 
 
 def decision_response(decision: Decision) -> DecisionResponse:

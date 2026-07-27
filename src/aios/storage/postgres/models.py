@@ -431,6 +431,10 @@ class DecisionRecord(Base):
             "confidence >= 0 and confidence <= 1", "ck_decisions_confidence"
         ),
         CheckConstraint("valid_until > created_at", "ck_decisions_valid_until"),
+        UniqueConstraint(
+            "decision_result_id",
+            name="uq_decisions_decision_result_id",
+        ),
         Index("ix_decisions_experiment_id", "experiment_id"),
         Index("ix_decisions_symbol", "symbol"),
         Index("ix_decisions_action", "action"),
@@ -446,8 +450,8 @@ class DecisionRecord(Base):
     action: Mapped[str] = mapped_column(String(32), nullable=False)
     horizon: Mapped[str] = mapped_column(String(64), nullable=False)
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
-    expected_return: Mapped[float] = mapped_column(Float, nullable=False)
-    max_expected_loss: Mapped[float] = mapped_column(Float, nullable=False)
+    expected_return: Mapped[float | None] = mapped_column(Float)
+    max_expected_loss: Mapped[float | None] = mapped_column(Float)
     evidence_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
     reasoning_summary: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -457,6 +461,26 @@ class DecisionRecord(Base):
     valid_until: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
+    research_session_id: Mapped[str | None] = mapped_column(String(64))
+    decision_result_id: Mapped[str | None] = mapped_column(String(64))
+    risk_review_id: Mapped[str | None] = mapped_column(String(64))
+    direction: Mapped[str | None] = mapped_column(String(32))
+    original_direction: Mapped[str | None] = mapped_column(String(32))
+    target_range: Mapped[list[float] | None] = mapped_column(JSONB)
+    entry_conditions: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    invalidation_conditions: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    stop_loss: Mapped[float | None] = mapped_column(Float)
+    position_suggestion: Mapped[float | None] = mapped_column(Float)
+    risk_factors: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    supporting_skill_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    dissenting_opinions: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    market_regime: Mapped[str | None] = mapped_column(String(128))
+    generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    planned_settlement_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    unavailable_fields: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    downgrade_reasons: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
 
 
 class LLMGenerationRecordModel(Base):

@@ -16,6 +16,7 @@ from aios.application.brain003 import DiscussionService
 from aios.application.brain004 import DecisionService
 from aios.application.brain_risk_review import RiskReviewService
 from aios.application.evidence_bridge import CoreEvidenceBridge
+from aios.application.formal_decision import FormalDecisionService
 from aios.application.market_evidence import MarketEvidenceImportService
 from aios.application.research_lifecycle import ResearchLifecycleService
 from aios.application.research_records import ResearchRecordService
@@ -25,16 +26,9 @@ from aios.kernel.brain003 import DiscussionExecution, DiscussionResult
 from aios.kernel.brain004 import DecisionExecution, DecisionResult
 from aios.kernel.debate import DecisionAssemblyRecord, RiskReview
 from aios.kernel.decision import Decision
-from aios.kernel.enums import (
-    Action,
-    AgentRole,
-    ExperimentStatus,
-    ResearchConclusion,
-    ResearchSessionStatus,
-)
+from aios.kernel.enums import AgentRole, ResearchSessionStatus
 from aios.kernel.errors import InvalidStateTransitionError
 from aios.kernel.evidence import Evidence
-from aios.kernel.experiment import Experiment
 from aios.kernel.research import ResearchSession
 from aios.kernel.research_records import AgentReport, Hypothesis
 from aios.skills.brain002 import (
@@ -175,18 +169,20 @@ class BrainResearchPipeline:
             skill_results=skill_results,
             evidence=evidence,
         )
-        self._transition_session(
-            session,
-            ResearchSessionStatus.DECISION_READY,
-            "risk review completed",
-        )
         decision = self._create_decision(
             session=session,
             decision_result=decision_result,
             risk_review=risk_review,
+            discussion=discussion,
+            skill_results=skill_results,
             evidence=evidence,
             model=model,
             provider=provider,
+        )
+        self._transition_session(
+            session,
+            ResearchSessionStatus.DECISION_READY,
+            "formal decision is ready",
         )
         assembly = self._create_assembly(
             session=session,
@@ -490,61 +486,21 @@ class BrainResearchPipeline:
         session: ResearchSession,
         decision_result: DecisionResult,
         risk_review: RiskReview,
+        discussion: DiscussionResult,
+        skill_results: tuple[SkillResult, ...],
         evidence: tuple[Evidence, ...],
         model: str,
         provider: str,
     ) -> Decision:
-        for decision in self._storage.list(Decision):
-            if (
-                decision.symbol == session.scope.symbol
-                and decision.created_at == session.scope.as_of
-                and decision.valid_until == session.scope.valid_until
-            ):
-                return decision
-        evidence_ids = tuple(decision_result.evidence_refs) or tuple(
-            item.evidence_id for item in evidence
-        )
-        experiment = Experiment(
-            name=f"brain-research-{session.research_session_id}",
+        return FormalDecisionService(lifecycle=self._lifecycle).assemble(
+            session=session,
+            decision_result=decision_result,
+            risk_review=risk_review,
+            discussion_result=discussion,
+            skill_results=skill_results,
+            evidence=evidence,
             model=model,
-            prompt_version="brain-research-v1",
-            agent_config_version="brain001-005",
-            dataset_snapshot=f"research-session:{session.research_session_id}",
-            evidence_ids=evidence_ids,
-            parameters={
-                "provider": provider,
-                "decision_result_id": decision_result.decision_result_id,
-                "discussion_result_id": decision_result.discussion_result_id,
-                "skill_result_ids": list(decision_result.skill_result_ids),
-                "risk_review_id": risk_review.risk_review_id,
-            },
-            status=ExperimentStatus.FINISHED,
-            started_at=session.scope.as_of,
-            finished_at=session.scope.as_of,
-            created_at=session.scope.as_of,
-        )
-        self._storage.save(experiment)
-        return self._lifecycle.create_decision(
-            Decision(
-                experiment_id=experiment.experiment_id,
-                symbol=session.scope.symbol,
-                action=(
-                    Action.NO_TRADE
-                    if risk_review.converted_to_no_trade
-                    else decision_result.action
-                ),
-                horizon=f"{session.scope.horizon_days}d",
-                confidence=risk_review.final_confidence,
-                expected_return=0.0,
-                max_expected_loss=0.0,
-                evidence_ids=evidence_ids,
-                reasoning_summary=(
-                    f"{decision_result.decision_summary} "
-                    f"RiskReview: {'; '.join(risk_review.reasons)}"
-                ),
-                created_at=session.scope.as_of,
-                valid_until=session.scope.valid_until,
-            )
+            provider=provider,
         )
 
     def _create_assembly(
@@ -673,16 +629,6 @@ def _brain_horizon(horizon_days: int) -> str:
     if horizon_days <= 7:
         return "swing"
     return "position"
-
-
-def _conclusion_for_decision(action: Action) -> ResearchConclusion:
-    return {
-        Action.BUY: ResearchConclusion.BUY,
-        Action.SELL: ResearchConclusion.SELL,
-        Action.HOLD: ResearchConclusion.HOLD,
-        Action.OBSERVE: ResearchConclusion.WATCH,
-        Action.NO_TRADE: ResearchConclusion.NO_TRADE,
-    }[action]
 
 
 def _matching_decision_result(

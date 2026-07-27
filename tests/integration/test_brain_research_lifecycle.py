@@ -381,7 +381,7 @@ def test_brain_pipeline_creates_risk_review_before_formal_decision(
     assert storage.list(DecisionAssemblyRecord) == []
     session = storage.list(ResearchSession)[0]
     assert session.status is ResearchSessionStatus.FAILED
-    assert session.failure_stage == ResearchSessionStatus.DECISION_READY.value
+    assert session.failure_stage == ResearchSessionStatus.RISK_REVIEW.value
     assert session.failure_error == "formal decision failed"
     assert session.retry_count == 1
 

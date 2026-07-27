@@ -12,6 +12,7 @@ from aios.kernel.debate import (
     DecisionProposal,
     RiskReview,
 )
+from aios.kernel.decision import Decision
 from aios.kernel.enums import (
     AgentReportStatus,
     AgentRole,
@@ -61,6 +62,12 @@ class Storage(Protocol):
         evaluation_rules_version: str,
     ) -> DecisionEvaluation | None:
         """Return the versioned evaluation for a Decision if one exists."""
+
+    def get_decision_by_decision_result_id(
+        self,
+        decision_result_id: str,
+    ) -> Decision | None:
+        """Return the BRAIN formal Decision for a DecisionResult if one exists."""
 
     def get_review_by_decision_id(self, decision_id: str) -> Review | None:
         """Return the Review for a Decision if one exists."""
