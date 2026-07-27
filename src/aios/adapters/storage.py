@@ -29,6 +29,7 @@ from aios.kernel.settlement import (
     DecisionOutcome,
     ResearchSettlementRecord,
 )
+from aios.kernel.trade_plan import TradePlan
 from aios.kernel.watchlist import WatchlistItem
 
 EntityT = TypeVar("EntityT", bound=KernelModel)
@@ -68,6 +69,9 @@ class Storage(Protocol):
         decision_result_id: str,
     ) -> Decision | None:
         """Return the BRAIN formal Decision for a DecisionResult if one exists."""
+
+    def get_trade_plan_by_decision_id(self, decision_id: str) -> TradePlan | None:
+        """Return the TradePlan for a Decision if one exists."""
 
     def get_review_by_decision_id(self, decision_id: str) -> Review | None:
         """Return the Review for a Decision if one exists."""

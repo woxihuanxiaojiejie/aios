@@ -66,8 +66,8 @@ def test_lifecycle_rejects_invalid_and_disabled_future_transitions() -> None:
     with pytest.raises(InvalidStateTransitionError, match="not enabled"):
         service.transition(
             session.research_session_id,
-            ResearchSessionStatus.TRADE_PLAN_READY,
-            reason="trade plan is Milestone 6",
+            ResearchSessionStatus.WAITING_EXECUTION,
+            reason="execution is Milestone 6",
         )
 
 

@@ -60,6 +60,7 @@ from aios.kernel.enums import (
     SkillDirection,
     SkillExecutionStatus,
     SkillStatus,
+    TradePlanStatus,
     WatchlistStatus,
 )
 from aios.kernel.errors import UnsupportedEntityError
@@ -75,6 +76,7 @@ from aios.kernel.settlement import (
     DecisionOutcome,
     ResearchSettlementRecord,
 )
+from aios.kernel.trade_plan import TradePlan
 from aios.kernel.watchlist import WatchlistItem
 from aios.storage.postgres.models import (
     AgentReportEvidenceRecord,
@@ -106,6 +108,7 @@ from aios.storage.postgres.models import (
     SkillDefinitionRecord,
     SkillExecutionRecord,
     SkillResultRecord,
+    TradePlanRecord,
     WatchlistItemRecord,
 )
 
@@ -139,6 +142,7 @@ type Record = (
     | DiscussionResultRecord
     | DecisionExecutionRecord
     | DecisionResultRecord
+    | TradePlanRecord
 )
 
 
@@ -372,6 +376,29 @@ def to_model(entity: KernelModel) -> Record:
             planned_settlement_at=entity.planned_settlement_at,
             unavailable_fields=list(entity.unavailable_fields),
             downgrade_reasons=list(entity.downgrade_reasons),
+        )
+    if isinstance(entity, TradePlan):
+        return TradePlanRecord(
+            trade_plan_id=entity.trade_plan_id,
+            decision_id=entity.decision_id,
+            research_session_id=entity.research_session_id,
+            symbol=entity.symbol,
+            direction=entity.direction.value,
+            status=entity.status.value,
+            planned_entry=list(entity.planned_entry),
+            entry_conditions=list(entity.entry_conditions),
+            target=list(entity.target) if entity.target else None,
+            stop_loss=entity.stop_loss,
+            invalidation_conditions=list(entity.invalidation_conditions),
+            planned_position=entity.planned_position,
+            horizon=entity.horizon,
+            expiry=entity.expiry,
+            fee_model=entity.fee_model,
+            slippage_model=entity.slippage_model,
+            unavailable_fields=list(entity.unavailable_fields),
+            no_trade_reasons=list(entity.no_trade_reasons),
+            created_at=entity.created_at,
+            updated_at=entity.updated_at,
         )
     if isinstance(entity, DecisionOutcome):
         return DecisionOutcomeRecord(
@@ -883,6 +910,29 @@ def model_to_entity(model: DeclarativeBase) -> KernelModel:
             unavailable_fields=tuple(model.unavailable_fields),
             downgrade_reasons=tuple(model.downgrade_reasons),
         )
+    if isinstance(model, TradePlanRecord):
+        return TradePlan(
+            trade_plan_id=model.trade_plan_id,
+            decision_id=model.decision_id,
+            research_session_id=model.research_session_id,
+            symbol=model.symbol,
+            direction=DecisionDirection(model.direction),
+            status=TradePlanStatus(model.status),
+            planned_entry=tuple(model.planned_entry),
+            entry_conditions=tuple(model.entry_conditions),
+            target=(model.target[0], model.target[1]) if model.target else None,
+            stop_loss=model.stop_loss,
+            invalidation_conditions=tuple(model.invalidation_conditions),
+            planned_position=model.planned_position,
+            horizon=model.horizon,
+            expiry=_utc(model.expiry),
+            fee_model=model.fee_model,
+            slippage_model=model.slippage_model,
+            unavailable_fields=tuple(model.unavailable_fields),
+            no_trade_reasons=tuple(model.no_trade_reasons),
+            created_at=_utc(model.created_at),
+            updated_at=_utc(model.updated_at),
+        )
     if isinstance(model, DecisionOutcomeRecord):
         return DecisionOutcome(
             outcome_id=model.outcome_id,
@@ -1146,6 +1196,8 @@ def model_for_entity_type(entity_type: type[KernelModel]) -> type[Record]:
         return ExperimentRecord
     if entity_type is Decision:
         return DecisionRecord
+    if entity_type is TradePlan:
+        return TradePlanRecord
     if entity_type is DecisionOutcome:
         return DecisionOutcomeRecord
     if entity_type is DecisionEvaluation:
@@ -1203,6 +1255,8 @@ def id_column_for_model(model_type: type[Record]) -> Any:
         return ExperimentRecord.experiment_id
     if model_type is DecisionRecord:
         return DecisionRecord.decision_id
+    if model_type is TradePlanRecord:
+        return TradePlanRecord.trade_plan_id
     if model_type is DecisionOutcomeRecord:
         return DecisionOutcomeRecord.outcome_id
     if model_type is DecisionEvaluationRecord:

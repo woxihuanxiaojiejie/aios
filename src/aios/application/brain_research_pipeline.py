@@ -20,6 +20,7 @@ from aios.application.formal_decision import FormalDecisionService
 from aios.application.market_evidence import MarketEvidenceImportService
 from aios.application.research_lifecycle import ResearchLifecycleService
 from aios.application.research_records import ResearchRecordService
+from aios.application.trade_plan import TradePlanService
 from aios.integrations.evidence import Evidence as BrainEvidence
 from aios.kernel.brain002 import AnalysisTask, SkillExecution, SkillResult
 from aios.kernel.brain003 import DiscussionExecution, DiscussionResult
@@ -31,6 +32,7 @@ from aios.kernel.errors import InvalidStateTransitionError
 from aios.kernel.evidence import Evidence
 from aios.kernel.research import ResearchSession
 from aios.kernel.research_records import AgentReport, Hypothesis
+from aios.kernel.trade_plan import TradePlan
 from aios.skills.brain002 import (
     AnnouncementRiskSkill,
     MarketSentimentSkill,
@@ -77,6 +79,7 @@ class BrainResearchPipelineResult:
     decision_result_id: str
     risk_review_id: str
     decision_id: str
+    trade_plan_id: str
     assembly_id: str
 
 
@@ -184,6 +187,12 @@ class BrainResearchPipeline:
             ResearchSessionStatus.DECISION_READY,
             "formal decision is ready",
         )
+        trade_plan = self._create_trade_plan(decision)
+        self._transition_session(
+            session,
+            ResearchSessionStatus.TRADE_PLAN_READY,
+            "trade plan is ready",
+        )
         assembly = self._create_assembly(
             session=session,
             decision=decision,
@@ -203,6 +212,7 @@ class BrainResearchPipeline:
             decision_result_id=decision_result.decision_result_id,
             risk_review_id=risk_review.risk_review_id,
             decision_id=decision.decision_id,
+            trade_plan_id=trade_plan.trade_plan_id,
             assembly_id=assembly.assembly_id,
         )
 
@@ -503,6 +513,11 @@ class BrainResearchPipeline:
             provider=provider,
         )
 
+    def _create_trade_plan(self, decision: Decision) -> TradePlan:
+        return TradePlanService(self._lifecycle).create_from_decision(
+            decision.decision_id
+        )
+
     def _create_assembly(
         self,
         *,
@@ -563,6 +578,9 @@ class BrainResearchPipeline:
             DecisionExecution,
             decision_result.decision_execution_id,
         )
+        trade_plan = TradePlanService(self._lifecycle).create_from_decision(
+            assembly.decision_id
+        )
         discussion_execution = self._storage.get(
             DiscussionExecution,
             discussion.discussion_execution_id,
@@ -582,6 +600,7 @@ class BrainResearchPipeline:
             decision_result_id=decision_result.decision_result_id,
             risk_review_id=assembly.risk_review_id or "",
             decision_id=assembly.decision_id,
+            trade_plan_id=trade_plan.trade_plan_id,
             assembly_id=assembly.assembly_id,
         )
 

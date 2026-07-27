@@ -14,6 +14,8 @@ from aios.application.watchlist import WatchlistService
 from aios.integrations.evidence import Evidence as BrainEvidence
 from aios.integrations.provider_records import RSSIntakeRecord
 from aios.kernel.brain002 import SkillDefinition
+from aios.kernel.settlement import DecisionOutcome
+from aios.kernel.trade_plan import TradePlan
 from aios.skills.brain002 import TechnicalTrendSkill
 from aios.storage.memory import InMemoryStorage
 from aios.workflows.decision_lifecycle import DecisionLifecycleService
@@ -199,9 +201,15 @@ def test_brain_pipeline_uses_bridged_core_evidence() -> None:
     assert bridged.title == "Legacy title"
     assert all(evidence_id.startswith("ev_") for evidence_id in result.evidence_ids)
 
+    trade_plan = storage.get(TradePlan, result.trade_plan_id)
+    assert trade_plan.decision_id == result.decision_id
+    assert trade_plan.status.value == "no_trade"
+    assert storage.list(DecisionOutcome) == []
+
     persisted_session = storage.get(type(research_session), research_session.entity_id)
-    assert persisted_session.status.value == "decision_ready"
-    assert [event.to_state.value for event in persisted_session.transition_log] == [
+    assert persisted_session.status.value == "trade_plan_ready"
+    states = [event.to_state.value for event in persisted_session.transition_log]
+    assert states == [
         "collecting_evidence",
         "evidence_ready",
         "hypothesis_ready",
@@ -209,7 +217,9 @@ def test_brain_pipeline_uses_bridged_core_evidence() -> None:
         "discussion_ready",
         "risk_review",
         "decision_ready",
+        "trade_plan_ready",
     ]
+    assert "waiting_execution" not in states
 
 
 def _technical_definition() -> SkillDefinition:

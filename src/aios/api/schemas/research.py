@@ -14,11 +14,13 @@ from aios.api.schemas.learning import LearningResponse, learning_response
 from aios.api.schemas.market_data import MarketBarResponse
 from aios.api.schemas.review import ReviewResponse
 from aios.kernel.enums import (
+    DecisionDirection,
     DirectionalResult,
     EvaluationFinalResult,
     OutcomeStatus,
     ReturnResult,
     RiskResult,
+    TradePlanStatus,
 )
 from aios.kernel.learning import Learning
 from aios.kernel.settlement import (
@@ -26,6 +28,7 @@ from aios.kernel.settlement import (
     DecisionOutcome,
     ResearchSettlementRecord,
 )
+from aios.kernel.trade_plan import TradePlan
 
 
 class ResearchMarketResponse(ApiSchema):
@@ -81,6 +84,29 @@ class ResearchSettlementRequest(ApiSchema):
         if value is None:
             return None
         return require_timezone(value)
+
+
+class TradePlanResponse(ApiSchema):
+    trade_plan_id: str
+    decision_id: str
+    research_session_id: str
+    symbol: str
+    direction: DecisionDirection
+    status: TradePlanStatus
+    planned_entry: tuple[str, ...]
+    entry_conditions: tuple[str, ...]
+    target: tuple[float, float] | None
+    stop_loss: float | None
+    invalidation_conditions: tuple[str, ...]
+    planned_position: float | None
+    horizon: str
+    expiry: datetime
+    fee_model: dict[str, object]
+    slippage_model: dict[str, object]
+    unavailable_fields: tuple[str, ...]
+    no_trade_reasons: tuple[str, ...]
+    created_at: datetime
+    updated_at: datetime
 
 
 class DecisionOutcomeResponse(ApiSchema):
@@ -177,6 +203,10 @@ def decision_outcome_response(outcome: DecisionOutcome) -> DecisionOutcomeRespon
     return DecisionOutcomeResponse.model_validate(
         outcome.model_dump(exclude={"market_data_snapshot"})
     )
+
+
+def trade_plan_response(plan: TradePlan) -> TradePlanResponse:
+    return TradePlanResponse.model_validate(plan.model_dump())
 
 
 def decision_evaluation_response(

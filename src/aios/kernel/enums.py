@@ -22,6 +22,14 @@ class DecisionStatus(StrEnum):
     INVALID = "invalid"
 
 
+class TradePlanStatus(StrEnum):
+    READY = "ready"
+    NO_TRADE = "no_trade"
+    INVALID = "invalid"
+    EXPIRED = "expired"
+    CANCELLED = "cancelled"
+
+
 class OutcomeStatus(StrEnum):
     SETTLED = "settled"
     INSUFFICIENT_DATA = "insufficient_data"

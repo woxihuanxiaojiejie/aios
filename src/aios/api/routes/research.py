@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from datetime import UTC, date, datetime, timedelta
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Query, Response, status
 
 from aios.adapters.market_data import Adjustment
 from aios.api.dependencies import (
@@ -49,9 +49,11 @@ from aios.api.schemas.research import (
     ResearchMarketResponse,
     ResearchSettlementRequest,
     ResearchSettlementResponse,
+    TradePlanResponse,
     decision_evaluation_response,
     decision_outcome_response,
     research_assembly_settlement_response,
+    trade_plan_response,
 )
 from aios.api.schemas.research_records import (
     AgentReportCreateRequest,
@@ -87,6 +89,7 @@ from aios.application.research_records import ResearchRecordService
 from aios.application.research_runner import ResearchRunner
 from aios.application.research_session import ResearchSessionService
 from aios.application.research_settlement import ResearchSettlementService
+from aios.application.trade_plan import TradePlanService
 from aios.application.watchlist import WatchlistService
 from aios.kernel.decision import Decision
 from aios.kernel.enums import (
@@ -102,6 +105,7 @@ from aios.kernel.experiment import Experiment
 from aios.kernel.research_run import ResearchRun
 from aios.kernel.review import Review
 from aios.kernel.settlement import DecisionOutcome
+from aios.kernel.trade_plan import TradePlan
 
 router = APIRouter(prefix="/research", tags=["research"])
 
@@ -672,6 +676,32 @@ def run_research_decision(
         decision=decision_response(result.decision),
         generation=generation_metadata_response(result.generation),
     )
+
+
+@router.post(
+    "/decisions/{decision_id}/trade-plan",
+    response_model=TradePlanResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_trade_plan(
+    decision_id: str,
+    response: Response,
+    lifecycle: LifecycleDep,
+) -> TradePlanResponse:
+    existing = lifecycle.storage.get_trade_plan_by_decision_id(decision_id)
+    plan = TradePlanService(lifecycle).create_from_decision(decision_id)
+    if existing is not None:
+        response.status_code = status.HTTP_200_OK
+    return trade_plan_response(plan)
+
+
+@router.get("/trade-plans/{trade_plan_id}", response_model=TradePlanResponse)
+def get_trade_plan(
+    trade_plan_id: str,
+    lifecycle: LifecycleDep,
+) -> TradePlanResponse:
+    plan = lifecycle.get_entity(TradePlan, trade_plan_id)
+    return trade_plan_response(plan)
 
 
 @router.post(

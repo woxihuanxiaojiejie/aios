@@ -46,6 +46,7 @@ from aios.kernel.settlement import (
     DecisionOutcome,
     ResearchSettlementRecord,
 )
+from aios.kernel.trade_plan import TradePlan
 from aios.kernel.watchlist import WatchlistItem
 
 SUPPORTED_ENTITY_TYPES = (
@@ -75,6 +76,7 @@ SUPPORTED_ENTITY_TYPES = (
     DiscussionResult,
     DecisionExecution,
     DecisionResult,
+    TradePlan,
 )
 
 
@@ -96,6 +98,11 @@ class InMemoryStorage:
         if entity_id in self._entities[entity_type]:
             msg = f"{entity_type.__name__} with id {entity_id} already exists"
             raise DuplicateEntityError(msg)
+        if isinstance(entity, TradePlan):
+            existing = self.get_trade_plan_by_decision_id(entity.decision_id)
+            if existing is not None:
+                msg = f"Decision {entity.decision_id} already has a TradePlan"
+                raise DuplicateEntityError(msg)
         self._entities[entity_type][entity_id] = entity
 
     def replace(self, entity: KernelModel) -> None:
@@ -167,6 +174,14 @@ class InMemoryStorage:
             decision = cast("Decision", entity)
             if decision.decision_result_id == decision_result_id:
                 return decision
+        return None
+
+    def get_trade_plan_by_decision_id(self, decision_id: str) -> TradePlan | None:
+        self._require_supported(TradePlan)
+        for entity in self._entities[TradePlan].values():
+            plan = cast("TradePlan", entity)
+            if plan.decision_id == decision_id:
+                return plan
         return None
 
     def get_review_by_decision_id(self, decision_id: str) -> Review | None:

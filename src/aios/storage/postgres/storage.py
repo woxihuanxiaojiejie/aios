@@ -39,6 +39,7 @@ from aios.kernel.settlement import (
     DecisionOutcome,
     ResearchSettlementRecord,
 )
+from aios.kernel.trade_plan import TradePlan
 from aios.kernel.watchlist import WatchlistItem
 from aios.storage.postgres.database import make_engine, make_session_factory
 from aios.storage.postgres.mapper import (
@@ -63,6 +64,7 @@ from aios.storage.postgres.models import (
     ReviewRecord,
     RiskReviewRecord,
     SkillExecutionRecord,
+    TradePlanRecord,
     WatchlistItemRecord,
 )
 
@@ -246,6 +248,20 @@ class PostgresStorage:
             return cast("Decision", model_to_entity(model)) if model else None
         except SQLAlchemyError as exc:
             msg = f"failed to get Decision for {decision_result_id}"
+            raise StorageOperationError(msg) from exc
+        finally:
+            session.close()
+
+    def get_trade_plan_by_decision_id(self, decision_id: str) -> TradePlan | None:
+        session = self._session_factory()
+        try:
+            statement = select(TradePlanRecord).where(
+                TradePlanRecord.decision_id == decision_id
+            )
+            model = session.scalars(statement).one_or_none()
+            return cast("TradePlan", model_to_entity(model)) if model else None
+        except SQLAlchemyError as exc:
+            msg = f"failed to get TradePlan for decision {decision_id}"
             raise StorageOperationError(msg) from exc
         finally:
             session.close()

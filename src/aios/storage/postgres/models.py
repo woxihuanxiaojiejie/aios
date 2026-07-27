@@ -483,6 +483,51 @@ class DecisionRecord(Base):
     downgrade_reasons: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
 
 
+class TradePlanRecord(Base):
+    __tablename__ = "trade_plans"
+    __table_args__ = (
+        UniqueConstraint("decision_id", name="uq_trade_plans_decision_id"),
+        CheckConstraint(
+            "status in ('ready', 'no_trade', 'invalid', 'expired', 'cancelled')",
+            "ck_trade_plans_status",
+        ),
+        CheckConstraint("updated_at >= created_at", "ck_trade_plans_updated_at"),
+        Index("ix_trade_plans_decision_id", "decision_id"),
+        Index("ix_trade_plans_research_session_id", "research_session_id"),
+        Index("ix_trade_plans_symbol", "symbol"),
+        Index("ix_trade_plans_status", "status"),
+    )
+
+    trade_plan_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    decision_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("decisions.decision_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    research_session_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    symbol: Mapped[str] = mapped_column(String(64), nullable=False)
+    direction: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    planned_entry: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    entry_conditions: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    target: Mapped[list[float] | None] = mapped_column(JSONB)
+    stop_loss: Mapped[float | None] = mapped_column(Float)
+    invalidation_conditions: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    planned_position: Mapped[float | None] = mapped_column(Float)
+    horizon: Mapped[str] = mapped_column(String(64), nullable=False)
+    expiry: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    fee_model: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    slippage_model: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    unavailable_fields: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    no_trade_reasons: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
 class LLMGenerationRecordModel(Base):
     __tablename__ = "llm_generation_records"
     __table_args__ = (
