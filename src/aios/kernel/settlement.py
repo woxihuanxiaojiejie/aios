@@ -10,6 +10,8 @@ from aios.kernel.base import KernelModel, ensure_utc, new_id, utc_now
 from aios.kernel.enums import (
     DirectionalResult,
     EvaluationFinalResult,
+    EvaluationScore,
+    ExecutionExitReason,
     OutcomeStatus,
     ReturnResult,
     RiskResult,
@@ -36,7 +38,19 @@ class DecisionOutcome(KernelModel):
     market_data_snapshot: dict[str, Any] = Field(default_factory=dict)
     settled_at: datetime = Field(default_factory=utc_now)
     status: OutcomeStatus
+    execution_id: str | None = Field(default=None, min_length=1)
+    trade_plan_id: str | None = Field(default=None, min_length=1)
+    research_session_id: str | None = Field(default=None, min_length=1)
+    pnl: Decimal | None = None
+    return_rate: Decimal | None = None
+    holding_days: int | None = Field(default=None, ge=0)
+    exit_reason: ExecutionExitReason | None = None
+    max_drawdown: Decimal | None = None
     created_at: datetime = Field(default_factory=utc_now)
+
+    @property
+    def max_favorable_excursion(self) -> Decimal | None:
+        return self.maximum_favorable_excursion
 
     @field_validator(
         "observation_started_at",
@@ -54,6 +68,9 @@ class DecisionOutcome(KernelModel):
         "realized_return",
         "maximum_adverse_excursion",
         "maximum_favorable_excursion",
+        "pnl",
+        "return_rate",
+        "max_drawdown",
         mode="before",
     )
     @classmethod
@@ -103,6 +120,10 @@ class DecisionEvaluation(KernelModel):
     evaluation_rules_version: str = Field(min_length=1)
     evaluated_at: datetime = Field(default_factory=utc_now)
     explanation: str = Field(min_length=1, max_length=1200)
+    prediction_accuracy: EvaluationScore | None = None
+    timing_accuracy: EvaluationScore | None = None
+    risk_control: EvaluationScore | None = None
+    execution_quality: EvaluationScore | None = None
     created_at: datetime = Field(default_factory=utc_now)
 
     @field_validator("evaluated_at", "created_at")

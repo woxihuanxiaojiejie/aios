@@ -32,10 +32,14 @@ from aios.kernel.decision import Decision
 from aios.kernel.enums import (
     AgentReportStatus,
     AgentRole,
+    DecisionDirection,
+    ExecutionExitReason,
+    ExecutionStatus,
     HypothesisStatus,
     ResearchConclusion,
     ResearchSessionStatus,
     RiskVerdict,
+    TradePlanStatus,
 )
 from aios.kernel.errors import (
     DuplicateEntityError,
@@ -43,6 +47,7 @@ from aios.kernel.errors import (
     StorageOperationError,
 )
 from aios.kernel.evidence import Evidence
+from aios.kernel.execution import SimulatedExecution
 from aios.kernel.experiment import Experiment
 from aios.kernel.learning import Learning
 from aios.kernel.research import ResearchSession
@@ -50,6 +55,7 @@ from aios.kernel.research_records import AgentReport, Hypothesis
 from aios.kernel.research_run import ResearchRun
 from aios.kernel.review import Review
 from aios.kernel.settlement import DecisionEvaluation, DecisionOutcome
+from aios.kernel.trade_plan import TradePlan
 from aios.kernel.watchlist import WatchlistItem, WatchlistStatus
 from aios.storage.postgres.storage import PostgresStorage
 
@@ -236,6 +242,47 @@ def test_all_risk_review_verdicts_persist(migrated_postgres_url: str) -> None:
 def test_decision_settlement_query_methods(migrated_postgres_url: str) -> None:
     storage = PostgresStorage(migrated_postgres_url)
     evidence, experiment, decision, _review, _learning = seed_lifecycle(storage)
+    created = fixed_now()
+    plan = TradePlan(
+        decision_id=decision.decision_id,
+        research_session_id="rs_00000000-0000-0000-0000-000000000001",
+        symbol=decision.symbol,
+        direction=DecisionDirection.BULLISH,
+        status=TradePlanStatus.READY,
+        planned_entry=("10.00",),
+        entry_conditions=("10.00",),
+        target=(12.0, 13.0),
+        stop_loss=9.5,
+        invalidation_conditions=("close below 9.50",),
+        planned_position=0.25,
+        horizon="3d",
+        expiry=created + timedelta(days=3),
+        fee_model={"type": "not_specified"},
+        slippage_model={"type": "not_specified"},
+        created_at=created,
+        updated_at=created,
+    )
+    execution = SimulatedExecution(
+        trade_plan_id=plan.trade_plan_id,
+        decision_id=decision.decision_id,
+        research_session_id=plan.research_session_id,
+        symbol=decision.symbol,
+        direction=DecisionDirection.BULLISH,
+        execution_status=ExecutionStatus.WAITING_SETTLEMENT,
+        execution_date=created.date(),
+        market_bar_id="akshare.stock_zh_a_hist:NVDA:2026-08-01:none",
+        market_data_source="akshare.stock_zh_a_hist",
+        planned_entry="10.00",
+        executed_entry="10.00",
+        executed_exit="9.50",
+        position_size="0.25",
+        fee="0.0010",
+        slippage="0",
+        realized_return="-0.0510",
+        exit_reason=ExecutionExitReason.STOP,
+        created_at=created,
+        updated_at=created,
+    )
     outcome = make_outcome(decision.decision_id, experiment.experiment_id)
     evaluation = make_evaluation(
         decision.decision_id,
@@ -243,9 +290,17 @@ def test_decision_settlement_query_methods(migrated_postgres_url: str) -> None:
         experiment.experiment_id,
     )
 
+    storage.save(plan)
+    storage.save(execution)
     storage.save(outcome)
     storage.save(evaluation)
 
+    assert storage.get(TradePlan, plan.trade_plan_id) == plan
+    assert storage.get(SimulatedExecution, execution.execution_id) == execution
+    assert (
+        storage.get_simulated_execution_by_trade_plan_id(plan.trade_plan_id)
+        == execution
+    )
     assert storage.get(DecisionOutcome, outcome.outcome_id) == outcome
     assert storage.get(DecisionEvaluation, evaluation.evaluation_id) == evaluation
     assert storage.get_decision_outcome_by_decision_id(decision.decision_id) == outcome
@@ -353,6 +408,8 @@ def test_migration_upgrade_downgrade_upgrade(postgres_url: str) -> None:
             "decision_assembly_records",
             "decision_executions",
             "decision_results",
+            "trade_plans",
+            "simulated_executions",
         } <= set(inspector.get_table_names())
         review_columns = {
             column["name"]: column for column in inspector.get_columns("reviews")

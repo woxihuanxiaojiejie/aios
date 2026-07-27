@@ -30,6 +30,7 @@ from aios.kernel.errors import (
     MissingEntityError,
     StorageOperationError,
 )
+from aios.kernel.execution import SimulatedExecution
 from aios.kernel.research import ResearchSession
 from aios.kernel.research_records import AgentReport, Hypothesis
 from aios.kernel.research_run import ResearchRun
@@ -63,6 +64,7 @@ from aios.storage.postgres.models import (
     ResearchSettlementRecordModel,
     ReviewRecord,
     RiskReviewRecord,
+    SimulatedExecutionRecord,
     SkillExecutionRecord,
     TradePlanRecord,
     WatchlistItemRecord,
@@ -262,6 +264,40 @@ class PostgresStorage:
             return cast("TradePlan", model_to_entity(model)) if model else None
         except SQLAlchemyError as exc:
             msg = f"failed to get TradePlan for decision {decision_id}"
+            raise StorageOperationError(msg) from exc
+        finally:
+            session.close()
+
+    def get_simulated_execution_by_trade_plan_id(
+        self,
+        trade_plan_id: str,
+    ) -> SimulatedExecution | None:
+        session = self._session_factory()
+        try:
+            statement = select(SimulatedExecutionRecord).where(
+                SimulatedExecutionRecord.trade_plan_id == trade_plan_id
+            )
+            model = session.scalars(statement).one_or_none()
+            return cast("SimulatedExecution", model_to_entity(model)) if model else None
+        except SQLAlchemyError as exc:
+            msg = f"failed to get SimulatedExecution for TradePlan {trade_plan_id}"
+            raise StorageOperationError(msg) from exc
+        finally:
+            session.close()
+
+    def get_settlement_outcome_by_execution_id(
+        self,
+        execution_id: str,
+    ) -> DecisionOutcome | None:
+        session = self._session_factory()
+        try:
+            statement = select(DecisionOutcomeRecord).where(
+                DecisionOutcomeRecord.execution_id == execution_id
+            )
+            model = session.scalars(statement).one_or_none()
+            return cast("DecisionOutcome", model_to_entity(model)) if model else None
+        except SQLAlchemyError as exc:
+            msg = f"failed to get DecisionOutcome for execution {execution_id}"
             raise StorageOperationError(msg) from exc
         finally:
             session.close()

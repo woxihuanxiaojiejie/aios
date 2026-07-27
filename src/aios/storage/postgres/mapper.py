@@ -47,6 +47,9 @@ from aios.kernel.enums import (
     DecisionStatus,
     DirectionalResult,
     EvaluationFinalResult,
+    EvaluationScore,
+    ExecutionExitReason,
+    ExecutionStatus,
     ExperimentStatus,
     HypothesisStatus,
     LearningType,
@@ -65,6 +68,7 @@ from aios.kernel.enums import (
 )
 from aios.kernel.errors import UnsupportedEntityError
 from aios.kernel.evidence import Evidence
+from aios.kernel.execution import SimulatedExecution
 from aios.kernel.experiment import Experiment
 from aios.kernel.learning import Learning
 from aios.kernel.research import ResearchScope, ResearchSession, ResearchTransitionEvent
@@ -105,6 +109,7 @@ from aios.storage.postgres.models import (
     ResearchSettlementRecordModel,
     ReviewRecord,
     RiskReviewRecord,
+    SimulatedExecutionRecord,
     SkillDefinitionRecord,
     SkillExecutionRecord,
     SkillResultRecord,
@@ -143,6 +148,7 @@ type Record = (
     | DecisionExecutionRecord
     | DecisionResultRecord
     | TradePlanRecord
+    | SimulatedExecutionRecord
 )
 
 
@@ -400,6 +406,37 @@ def to_model(entity: KernelModel) -> Record:
             created_at=entity.created_at,
             updated_at=entity.updated_at,
         )
+    if isinstance(entity, SimulatedExecution):
+        execution_date = (
+            datetime.combine(
+                entity.execution_date,
+                datetime.min.time().replace(tzinfo=entity.created_at.tzinfo),
+            )
+            if entity.execution_date is not None
+            else None
+        )
+        return SimulatedExecutionRecord(
+            execution_id=entity.execution_id,
+            trade_plan_id=entity.trade_plan_id,
+            decision_id=entity.decision_id,
+            research_session_id=entity.research_session_id,
+            symbol=entity.symbol,
+            direction=entity.direction.value,
+            execution_status=entity.execution_status.value,
+            execution_date=execution_date,
+            market_bar_id=entity.market_bar_id,
+            market_data_source=entity.market_data_source,
+            planned_entry=entity.planned_entry,
+            executed_entry=entity.executed_entry,
+            executed_exit=entity.executed_exit,
+            position_size=entity.position_size,
+            fee=entity.fee,
+            slippage=entity.slippage,
+            realized_return=entity.realized_return,
+            exit_reason=entity.exit_reason.value,
+            created_at=entity.created_at,
+            updated_at=entity.updated_at,
+        )
     if isinstance(entity, DecisionOutcome):
         return DecisionOutcomeRecord(
             outcome_id=entity.outcome_id,
@@ -419,6 +456,14 @@ def to_model(entity: KernelModel) -> Record:
             market_data_snapshot=entity.market_data_snapshot,
             settled_at=entity.settled_at,
             status=entity.status.value,
+            execution_id=entity.execution_id,
+            trade_plan_id=entity.trade_plan_id,
+            research_session_id=entity.research_session_id,
+            pnl=entity.pnl,
+            return_rate=entity.return_rate,
+            holding_days=entity.holding_days,
+            exit_reason=entity.exit_reason.value if entity.exit_reason else None,
+            max_drawdown=entity.max_drawdown,
             created_at=entity.created_at,
         )
     if isinstance(entity, DecisionEvaluation):
@@ -434,6 +479,16 @@ def to_model(entity: KernelModel) -> Record:
             evaluation_rules_version=entity.evaluation_rules_version,
             evaluated_at=entity.evaluated_at,
             explanation=entity.explanation,
+            prediction_accuracy=(
+                entity.prediction_accuracy.value if entity.prediction_accuracy else None
+            ),
+            timing_accuracy=(
+                entity.timing_accuracy.value if entity.timing_accuracy else None
+            ),
+            risk_control=entity.risk_control.value if entity.risk_control else None,
+            execution_quality=(
+                entity.execution_quality.value if entity.execution_quality else None
+            ),
             created_at=entity.created_at,
         )
     if isinstance(entity, ResearchSettlementRecord):
@@ -465,6 +520,12 @@ def to_model(entity: KernelModel) -> Record:
             outcome=entity.outcome.value,
             cause_tags=list(entity.cause_tags),
             review_summary=entity.review_summary,
+            success_reasons=list(entity.success_reasons),
+            failure_reasons=list(entity.failure_reasons),
+            effective_evidence_ids=list(entity.effective_evidence_ids),
+            effective_skill_ids=list(entity.effective_skill_ids),
+            mistaken_judgement_ids=list(entity.mistaken_judgement_ids),
+            reference_ids=entity.reference_ids,
             created_at=entity.created_at,
         )
     if isinstance(entity, Learning):
@@ -933,6 +994,31 @@ def model_to_entity(model: DeclarativeBase) -> KernelModel:
             created_at=_utc(model.created_at),
             updated_at=_utc(model.updated_at),
         )
+    if isinstance(model, SimulatedExecutionRecord):
+        return SimulatedExecution(
+            execution_id=model.execution_id,
+            trade_plan_id=model.trade_plan_id,
+            decision_id=model.decision_id,
+            research_session_id=model.research_session_id,
+            symbol=model.symbol,
+            direction=DecisionDirection(model.direction),
+            execution_status=ExecutionStatus(model.execution_status),
+            execution_date=(
+                model.execution_date.date() if model.execution_date else None
+            ),
+            market_bar_id=model.market_bar_id,
+            market_data_source=model.market_data_source,
+            planned_entry=model.planned_entry,
+            executed_entry=model.executed_entry,
+            executed_exit=model.executed_exit,
+            position_size=model.position_size,
+            fee=model.fee,
+            slippage=model.slippage,
+            realized_return=model.realized_return,
+            exit_reason=ExecutionExitReason(model.exit_reason),
+            created_at=_utc(model.created_at),
+            updated_at=_utc(model.updated_at),
+        )
     if isinstance(model, DecisionOutcomeRecord):
         return DecisionOutcome(
             outcome_id=model.outcome_id,
@@ -952,6 +1038,16 @@ def model_to_entity(model: DeclarativeBase) -> KernelModel:
             market_data_snapshot=model.market_data_snapshot,
             settled_at=_utc(model.settled_at),
             status=OutcomeStatus(model.status),
+            execution_id=model.execution_id,
+            trade_plan_id=model.trade_plan_id,
+            research_session_id=model.research_session_id,
+            pnl=model.pnl,
+            return_rate=model.return_rate,
+            holding_days=model.holding_days,
+            exit_reason=(
+                ExecutionExitReason(model.exit_reason) if model.exit_reason else None
+            ),
+            max_drawdown=model.max_drawdown,
             created_at=_utc(model.created_at),
         )
     if isinstance(model, DecisionEvaluationRecord):
@@ -967,6 +1063,24 @@ def model_to_entity(model: DeclarativeBase) -> KernelModel:
             evaluation_rules_version=model.evaluation_rules_version,
             evaluated_at=_utc(model.evaluated_at),
             explanation=model.explanation,
+            prediction_accuracy=(
+                EvaluationScore(model.prediction_accuracy)
+                if model.prediction_accuracy
+                else None
+            ),
+            timing_accuracy=(
+                EvaluationScore(model.timing_accuracy)
+                if model.timing_accuracy
+                else None
+            ),
+            risk_control=(
+                EvaluationScore(model.risk_control) if model.risk_control else None
+            ),
+            execution_quality=(
+                EvaluationScore(model.execution_quality)
+                if model.execution_quality
+                else None
+            ),
             created_at=_utc(model.created_at),
         )
     if isinstance(model, ResearchSettlementRecordModel):
@@ -998,6 +1112,12 @@ def model_to_entity(model: DeclarativeBase) -> KernelModel:
             outcome=Outcome(model.outcome),
             cause_tags=tuple(model.cause_tags),
             review_summary=model.review_summary,
+            success_reasons=tuple(model.success_reasons or ()),
+            failure_reasons=tuple(model.failure_reasons or ()),
+            effective_evidence_ids=tuple(model.effective_evidence_ids or ()),
+            effective_skill_ids=tuple(model.effective_skill_ids or ()),
+            mistaken_judgement_ids=tuple(model.mistaken_judgement_ids or ()),
+            reference_ids=model.reference_ids or {},
             created_at=_utc(model.created_at),
         )
     if isinstance(model, LearningRecord):
@@ -1198,6 +1318,8 @@ def model_for_entity_type(entity_type: type[KernelModel]) -> type[Record]:
         return DecisionRecord
     if entity_type is TradePlan:
         return TradePlanRecord
+    if entity_type is SimulatedExecution:
+        return SimulatedExecutionRecord
     if entity_type is DecisionOutcome:
         return DecisionOutcomeRecord
     if entity_type is DecisionEvaluation:
@@ -1257,6 +1379,8 @@ def id_column_for_model(model_type: type[Record]) -> Any:
         return DecisionRecord.decision_id
     if model_type is TradePlanRecord:
         return TradePlanRecord.trade_plan_id
+    if model_type is SimulatedExecutionRecord:
+        return SimulatedExecutionRecord.execution_id
     if model_type is DecisionOutcomeRecord:
         return DecisionOutcomeRecord.outcome_id
     if model_type is DecisionEvaluationRecord:

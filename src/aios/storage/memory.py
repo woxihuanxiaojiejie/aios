@@ -3,6 +3,7 @@ from __future__ import annotations
 import builtins
 from collections import defaultdict
 from datetime import datetime
+from threading import RLock
 from typing import Protocol, cast
 
 from aios.kernel.base import KernelModel
@@ -35,6 +36,7 @@ from aios.kernel.errors import (
     UnsupportedEntityError,
 )
 from aios.kernel.evidence import Evidence
+from aios.kernel.execution import SimulatedExecution
 from aios.kernel.experiment import Experiment
 from aios.kernel.learning import Learning
 from aios.kernel.research import ResearchSession
@@ -77,6 +79,7 @@ SUPPORTED_ENTITY_TYPES = (
     DecisionExecution,
     DecisionResult,
     TradePlan,
+    SimulatedExecution,
 )
 
 
@@ -90,20 +93,29 @@ class InMemoryStorage:
         self._entities: dict[type[KernelModel], dict[str, KernelModel]] = defaultdict(
             dict
         )
+        self._lock = RLock()
 
     def save(self, entity: KernelModel) -> None:
-        self._require_supported(type(entity))
-        entity_type = type(entity)
-        entity_id = entity.entity_id
-        if entity_id in self._entities[entity_type]:
-            msg = f"{entity_type.__name__} with id {entity_id} already exists"
-            raise DuplicateEntityError(msg)
-        if isinstance(entity, TradePlan):
-            existing = self.get_trade_plan_by_decision_id(entity.decision_id)
-            if existing is not None:
-                msg = f"Decision {entity.decision_id} already has a TradePlan"
+        with self._lock:
+            self._require_supported(type(entity))
+            entity_type = type(entity)
+            entity_id = entity.entity_id
+            if entity_id in self._entities[entity_type]:
+                msg = f"{entity_type.__name__} with id {entity_id} already exists"
                 raise DuplicateEntityError(msg)
-        self._entities[entity_type][entity_id] = entity
+            if isinstance(entity, TradePlan):
+                existing = self.get_trade_plan_by_decision_id(entity.decision_id)
+                if existing is not None:
+                    msg = f"Decision {entity.decision_id} already has a TradePlan"
+                    raise DuplicateEntityError(msg)
+            if isinstance(entity, SimulatedExecution):
+                existing_execution = self.get_simulated_execution_by_trade_plan_id(
+                    entity.trade_plan_id
+                )
+                if existing_execution is not None:
+                    msg = f"TradePlan {entity.trade_plan_id} already has an execution"
+                    raise DuplicateEntityError(msg)
+            self._entities[entity_type][entity_id] = entity
 
     def replace(self, entity: KernelModel) -> None:
         self._require_supported(type(entity))
@@ -182,6 +194,28 @@ class InMemoryStorage:
             plan = cast("TradePlan", entity)
             if plan.decision_id == decision_id:
                 return plan
+        return None
+
+    def get_simulated_execution_by_trade_plan_id(
+        self,
+        trade_plan_id: str,
+    ) -> SimulatedExecution | None:
+        self._require_supported(SimulatedExecution)
+        for entity in self._entities[SimulatedExecution].values():
+            execution = cast("SimulatedExecution", entity)
+            if execution.trade_plan_id == trade_plan_id:
+                return execution
+        return None
+
+    def get_settlement_outcome_by_execution_id(
+        self,
+        execution_id: str,
+    ) -> DecisionOutcome | None:
+        self._require_supported(DecisionOutcome)
+        for entity in self._entities[DecisionOutcome].values():
+            outcome = cast("DecisionOutcome", entity)
+            if outcome.execution_id == execution_id:
+                return outcome
         return None
 
     def get_review_by_decision_id(self, decision_id: str) -> Review | None:

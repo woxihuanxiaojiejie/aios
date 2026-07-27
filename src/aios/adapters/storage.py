@@ -20,6 +20,7 @@ from aios.kernel.enums import (
     ResearchSessionStatus,
     WatchlistStatus,
 )
+from aios.kernel.execution import SimulatedExecution
 from aios.kernel.research import ResearchSession
 from aios.kernel.research_records import AgentReport, Hypothesis
 from aios.kernel.research_run import ResearchRun
@@ -72,6 +73,18 @@ class Storage(Protocol):
 
     def get_trade_plan_by_decision_id(self, decision_id: str) -> TradePlan | None:
         """Return the TradePlan for a Decision if one exists."""
+
+    def get_simulated_execution_by_trade_plan_id(
+        self,
+        trade_plan_id: str,
+    ) -> SimulatedExecution | None:
+        """Return the SimulatedExecution for a TradePlan if one exists."""
+
+    def get_settlement_outcome_by_execution_id(
+        self,
+        execution_id: str,
+    ) -> DecisionOutcome | None:
+        """Return the settlement Outcome for a SimulatedExecution if one exists."""
 
     def get_review_by_decision_id(self, decision_id: str) -> Review | None:
         """Return the Review for a Decision if one exists."""

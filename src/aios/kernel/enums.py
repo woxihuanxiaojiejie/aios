@@ -71,8 +71,10 @@ class Outcome(StrEnum):
 
 class LearningType(StrEnum):
     AGENT_WEIGHT_UPDATE = "agent_weight_update"
+    SKILL_WEIGHT_UPDATE = "skill_weight_update"
     PROMPT_UPDATE = "prompt_update"
     RULE_UPDATE = "rule_update"
+    HYPOTHESIS_UPDATE = "hypothesis_update"
     MEMORY_UPDATE = "memory_update"
 
 
@@ -183,3 +185,21 @@ class DecisionDirection(StrEnum):
     BEARISH = "bearish"
     NEUTRAL = "neutral"
     NO_TRADE = "no_trade"
+
+
+class ExecutionStatus(StrEnum):
+    WAITING_SETTLEMENT = "waiting_settlement"
+    NOT_FILLED = "not_filled"
+
+
+class ExecutionExitReason(StrEnum):
+    TARGET = "target"
+    STOP = "stop"
+    EXPIRY = "expiry"
+    NOT_FILLED = "not_filled"
+
+
+class EvaluationScore(StrEnum):
+    GOOD = "good"
+    FAIR = "fair"
+    POOR = "poor"

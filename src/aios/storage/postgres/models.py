@@ -528,6 +528,62 @@ class TradePlanRecord(Base):
     )
 
 
+class SimulatedExecutionRecord(Base):
+    __tablename__ = "simulated_executions"
+    __table_args__ = (
+        UniqueConstraint("trade_plan_id", name="uq_simulated_executions_trade_plan_id"),
+        CheckConstraint(
+            "execution_status in ('waiting_settlement', 'not_filled')",
+            "ck_simulated_executions_status",
+        ),
+        CheckConstraint(
+            "exit_reason in ('target', 'stop', 'expiry', 'not_filled')",
+            "ck_simulated_executions_exit_reason",
+        ),
+        CheckConstraint("position_size >= 0 and position_size <= 1"),
+        CheckConstraint("fee >= 0"),
+        CheckConstraint("slippage >= 0"),
+        CheckConstraint(
+            "updated_at >= created_at",
+            "ck_simulated_executions_updated_at",
+        ),
+        Index("ix_simulated_executions_trade_plan_id", "trade_plan_id"),
+        Index("ix_simulated_executions_decision_id", "decision_id"),
+        Index("ix_simulated_executions_research_session_id", "research_session_id"),
+        Index("ix_simulated_executions_symbol", "symbol"),
+        Index("ix_simulated_executions_status", "execution_status"),
+    )
+
+    execution_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    trade_plan_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("trade_plans.trade_plan_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    decision_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    research_session_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    symbol: Mapped[str] = mapped_column(String(64), nullable=False)
+    direction: Mapped[str] = mapped_column(String(32), nullable=False)
+    execution_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    execution_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    market_bar_id: Mapped[str | None] = mapped_column(String(255))
+    market_data_source: Mapped[str | None] = mapped_column(String(255))
+    planned_entry: Mapped[str] = mapped_column(String(255), nullable=False)
+    executed_entry: Mapped[Decimal | None] = mapped_column(Numeric(24, 12))
+    executed_exit: Mapped[Decimal | None] = mapped_column(Numeric(24, 12))
+    position_size: Mapped[Decimal] = mapped_column(Numeric(24, 12), nullable=False)
+    fee: Mapped[Decimal] = mapped_column(Numeric(24, 12), nullable=False)
+    slippage: Mapped[Decimal] = mapped_column(Numeric(24, 12), nullable=False)
+    realized_return: Mapped[Decimal | None] = mapped_column(Numeric(24, 12))
+    exit_reason: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
 class LLMGenerationRecordModel(Base):
     __tablename__ = "llm_generation_records"
     __table_args__ = (
@@ -605,6 +661,14 @@ class DecisionOutcomeRecord(Base):
         DateTime(timezone=True), nullable=False
     )
     status: Mapped[str] = mapped_column(String(64), nullable=False)
+    execution_id: Mapped[str | None] = mapped_column(String(64))
+    trade_plan_id: Mapped[str | None] = mapped_column(String(64))
+    research_session_id: Mapped[str | None] = mapped_column(String(64))
+    pnl: Mapped[Decimal | None] = mapped_column(Numeric(24, 12))
+    return_rate: Mapped[Decimal | None] = mapped_column(Numeric(24, 12))
+    holding_days: Mapped[int | None] = mapped_column(Integer)
+    exit_reason: Mapped[str | None] = mapped_column(String(32))
+    max_drawdown: Mapped[Decimal | None] = mapped_column(Numeric(24, 12))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
@@ -647,6 +711,10 @@ class DecisionEvaluationRecord(Base):
         DateTime(timezone=True), nullable=False
     )
     explanation: Mapped[str] = mapped_column(String, nullable=False)
+    prediction_accuracy: Mapped[str | None] = mapped_column(String(32))
+    timing_accuracy: Mapped[str | None] = mapped_column(String(32))
+    risk_control: Mapped[str | None] = mapped_column(String(32))
+    execution_quality: Mapped[str | None] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
@@ -737,6 +805,12 @@ class ReviewRecord(Base):
     outcome: Mapped[str] = mapped_column(String(64), nullable=False)
     cause_tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
     review_summary: Mapped[str] = mapped_column(String, nullable=False)
+    success_reasons: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    failure_reasons: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    effective_evidence_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    effective_skill_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    mistaken_judgement_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    reference_ids: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )

@@ -36,6 +36,7 @@ from aios.api.schemas.decision import decision_response
 from aios.api.schemas.decision_generation import generation_metadata_response
 from aios.api.schemas.evidence import evidence_response
 from aios.api.schemas.experiment import ExperimentResponse, experiment_response
+from aios.api.schemas.learning import learning_response
 from aios.api.schemas.market_data import market_bar_response
 from aios.api.schemas.research import (
     ResearchAssemblySettlementResponse,
@@ -49,10 +50,12 @@ from aios.api.schemas.research import (
     ResearchMarketResponse,
     ResearchSettlementRequest,
     ResearchSettlementResponse,
+    SimulatedExecutionResponse,
     TradePlanResponse,
     decision_evaluation_response,
     decision_outcome_response,
     research_assembly_settlement_response,
+    simulated_execution_response,
     trade_plan_response,
 )
 from aios.api.schemas.research_records import (
@@ -85,10 +88,13 @@ from aios.application.debate import DebateService
 from aios.application.decision_generation import DecisionGenerationService
 from aios.application.decision_settlement import DecisionSettlementService
 from aios.application.market_evidence import MarketEvidenceImportService
+from aios.application.research_lifecycle import ResearchLifecycleService
 from aios.application.research_records import ResearchRecordService
 from aios.application.research_runner import ResearchRunner
 from aios.application.research_session import ResearchSessionService
 from aios.application.research_settlement import ResearchSettlementService
+from aios.application.settlement import SettlementService
+from aios.application.simulated_execution import SimulatedExecutionService
 from aios.application.trade_plan import TradePlanService
 from aios.application.watchlist import WatchlistService
 from aios.kernel.decision import Decision
@@ -101,6 +107,7 @@ from aios.kernel.enums import (
 )
 from aios.kernel.errors import EvaluationConfigurationError
 from aios.kernel.evidence import Evidence
+from aios.kernel.execution import SimulatedExecution
 from aios.kernel.experiment import Experiment
 from aios.kernel.research_run import ResearchRun
 from aios.kernel.review import Review
@@ -702,6 +709,65 @@ def get_trade_plan(
 ) -> TradePlanResponse:
     plan = lifecycle.get_entity(TradePlan, trade_plan_id)
     return trade_plan_response(plan)
+
+
+@router.post(
+    "/trade-plans/{trade_plan_id}/simulated-execution",
+    response_model=SimulatedExecutionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_simulated_execution(
+    trade_plan_id: str,
+    response: Response,
+    lifecycle: LifecycleDep,
+    adapter: MarketDataAdapterDep,
+) -> SimulatedExecutionResponse:
+    existing = lifecycle.storage.get_simulated_execution_by_trade_plan_id(trade_plan_id)
+    execution = SimulatedExecutionService(
+        lifecycle=ResearchLifecycleService(lifecycle.storage),
+        market_data_adapter=adapter,
+    ).execute_trade_plan(trade_plan_id)
+    if existing is not None:
+        response.status_code = status.HTTP_200_OK
+    return simulated_execution_response(execution)
+
+
+@router.get(
+    "/simulated-executions/{execution_id}",
+    response_model=SimulatedExecutionResponse,
+)
+def get_simulated_execution(
+    execution_id: str,
+    lifecycle: LifecycleDep,
+) -> SimulatedExecutionResponse:
+    execution = lifecycle.storage.get(SimulatedExecution, execution_id)
+    return simulated_execution_response(execution)
+
+
+@router.post(
+    "/simulated-executions/{execution_id}/settlement",
+    response_model=ResearchSettlementResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def settle_simulated_execution(
+    execution_id: str,
+    response: Response,
+    lifecycle: LifecycleDep,
+    adapter: MarketDataAdapterDep,
+) -> ResearchSettlementResponse:
+    existing = lifecycle.storage.get_settlement_outcome_by_execution_id(execution_id)
+    result = SettlementService(
+        lifecycle=ResearchLifecycleService(lifecycle.storage),
+        market_data_adapter=adapter,
+    ).settle_execution(execution_id)
+    if existing is not None:
+        response.status_code = status.HTTP_200_OK
+    return ResearchSettlementResponse(
+        outcome=decision_outcome_response(result.outcome),
+        evaluation=decision_evaluation_response(result.evaluation),
+        review=review_response(result.review),
+        learning_proposal=learning_response(result.learning_proposal),
+    )
 
 
 @router.post(

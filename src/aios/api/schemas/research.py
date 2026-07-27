@@ -17,11 +17,15 @@ from aios.kernel.enums import (
     DecisionDirection,
     DirectionalResult,
     EvaluationFinalResult,
+    EvaluationScore,
+    ExecutionExitReason,
+    ExecutionStatus,
     OutcomeStatus,
     ReturnResult,
     RiskResult,
     TradePlanStatus,
 )
+from aios.kernel.execution import SimulatedExecution
 from aios.kernel.learning import Learning
 from aios.kernel.settlement import (
     DecisionEvaluation,
@@ -109,6 +113,29 @@ class TradePlanResponse(ApiSchema):
     updated_at: datetime
 
 
+class SimulatedExecutionResponse(ApiSchema):
+    execution_id: str
+    trade_plan_id: str
+    decision_id: str
+    research_session_id: str
+    symbol: str
+    direction: DecisionDirection
+    execution_status: ExecutionStatus
+    execution_date: datetime | None
+    market_bar_id: str | None
+    market_data_source: str | None
+    planned_entry: str
+    executed_entry: Decimal | None
+    executed_exit: Decimal | None
+    position_size: Decimal
+    fee: Decimal
+    slippage: Decimal
+    realized_return: Decimal | None
+    exit_reason: ExecutionExitReason
+    created_at: datetime
+    updated_at: datetime
+
+
 class DecisionOutcomeResponse(ApiSchema):
     outcome_id: str
     decision_id: str
@@ -126,6 +153,15 @@ class DecisionOutcomeResponse(ApiSchema):
     market_data_source: str
     settled_at: datetime
     status: OutcomeStatus
+    execution_id: str | None = None
+    trade_plan_id: str | None = None
+    research_session_id: str | None = None
+    pnl: Decimal | None = None
+    return_rate: Decimal | None = None
+    holding_days: int | None = None
+    exit_reason: ExecutionExitReason | None = None
+    max_drawdown: Decimal | None = None
+    max_favorable_excursion: Decimal | None = None
     created_at: datetime
 
 
@@ -141,6 +177,10 @@ class DecisionEvaluationResponse(ApiSchema):
     evaluation_rules_version: str
     evaluated_at: datetime
     explanation: str
+    prediction_accuracy: EvaluationScore | None = None
+    timing_accuracy: EvaluationScore | None = None
+    risk_control: EvaluationScore | None = None
+    execution_quality: EvaluationScore | None = None
     created_at: datetime
 
 
@@ -148,6 +188,7 @@ class ResearchSettlementResponse(ApiSchema):
     outcome: DecisionOutcomeResponse
     evaluation: DecisionEvaluationResponse
     review: ReviewResponse
+    learning_proposal: LearningResponse | None = None
 
 
 class ResearchSettlementRecordResponse(ApiSchema):
@@ -200,13 +241,25 @@ class ResearchHistoryResponse(ApiSchema):
 
 
 def decision_outcome_response(outcome: DecisionOutcome) -> DecisionOutcomeResponse:
-    return DecisionOutcomeResponse.model_validate(
-        outcome.model_dump(exclude={"market_data_snapshot"})
-    )
+    payload = outcome.model_dump(exclude={"market_data_snapshot"})
+    payload["max_favorable_excursion"] = outcome.max_favorable_excursion
+    return DecisionOutcomeResponse.model_validate(payload)
 
 
 def trade_plan_response(plan: TradePlan) -> TradePlanResponse:
     return TradePlanResponse.model_validate(plan.model_dump())
+
+
+def simulated_execution_response(
+    execution: SimulatedExecution,
+) -> SimulatedExecutionResponse:
+    payload = execution.model_dump()
+    if execution.execution_date is not None:
+        payload["execution_date"] = datetime.combine(
+            execution.execution_date,
+            datetime.min.time(),
+        ).replace(tzinfo=execution.created_at.tzinfo)
+    return SimulatedExecutionResponse.model_validate(payload)
 
 
 def decision_evaluation_response(

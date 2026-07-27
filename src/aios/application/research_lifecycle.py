@@ -68,10 +68,40 @@ _ACTIVE_TRANSITIONS: dict[ResearchSessionStatus, frozenset[ResearchSessionStatus
     ),
     ResearchSessionStatus.TRADE_PLAN_READY: frozenset(
         {
+            ResearchSessionStatus.WAITING_SETTLEMENT,
             ResearchSessionStatus.CANCELLED,
             ResearchSessionStatus.FAILED,
         }
     ),
+    ResearchSessionStatus.WAITING_SETTLEMENT: frozenset(
+        {
+            ResearchSessionStatus.SETTLED,
+            ResearchSessionStatus.CANCELLED,
+            ResearchSessionStatus.FAILED,
+        }
+    ),
+    ResearchSessionStatus.SETTLED: frozenset(
+        {
+            ResearchSessionStatus.REVIEWED,
+            ResearchSessionStatus.CANCELLED,
+            ResearchSessionStatus.FAILED,
+        }
+    ),
+    ResearchSessionStatus.REVIEWED: frozenset(
+        {
+            ResearchSessionStatus.LEARNING_PROPOSED,
+            ResearchSessionStatus.CANCELLED,
+            ResearchSessionStatus.FAILED,
+        }
+    ),
+    ResearchSessionStatus.LEARNING_PROPOSED: frozenset(
+        {
+            ResearchSessionStatus.COMPLETED,
+            ResearchSessionStatus.CANCELLED,
+            ResearchSessionStatus.FAILED,
+        }
+    ),
+    ResearchSessionStatus.COMPLETED: frozenset(),
     ResearchSessionStatus.FAILED: frozenset({ResearchSessionStatus.FAILED}),
     ResearchSessionStatus.CANCELLED: frozenset(),
 }
@@ -92,6 +122,10 @@ class ResearchLifecycleService:
 
     def __init__(self, storage: Storage) -> None:
         self._storage = storage
+
+    @property
+    def storage(self) -> Storage:
+        return self._storage
 
     def transition(
         self,
