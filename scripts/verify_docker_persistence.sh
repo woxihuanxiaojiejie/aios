@@ -22,6 +22,17 @@ wait_for_api() {
   return 1
 }
 
+wait_for_frontend() {
+  for _ in $(seq 1 60); do
+    if curl -fsS "http://127.0.0.1:4173" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+  echo "AIOS frontend did not become available at http://127.0.0.1:4173" >&2
+  return 1
+}
+
 assert_watchlist_present() {
   local response
   response="$(
@@ -36,8 +47,9 @@ assert_watchlist_present() {
 }
 
 echo "Starting AIOS Compose services..."
-docker compose up -d postgres backend
+docker compose up -d --build postgres backend scheduler frontend
 wait_for_api
+wait_for_frontend
 
 echo "Creating persistence marker ${MARKER}..."
 curl -fsS \
@@ -48,8 +60,8 @@ curl -fsS \
 
 assert_watchlist_present
 
-echo "Restarting Postgres and backend containers..."
-docker compose restart postgres backend
+echo "Restarting Postgres, backend, and scheduler containers..."
+docker compose restart postgres backend scheduler
 wait_for_api
 assert_watchlist_present
 
@@ -57,8 +69,9 @@ echo "Stopping Compose services without removing volumes..."
 docker compose down
 
 echo "Starting AIOS Compose services again..."
-docker compose up -d postgres backend
+docker compose up -d --build postgres backend scheduler frontend
 wait_for_api
+wait_for_frontend
 assert_watchlist_present
 
 echo "Docker persistence verification passed for marker ${MARKER}."

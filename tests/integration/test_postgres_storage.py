@@ -421,6 +421,24 @@ def test_migration_upgrade_downgrade_upgrade(postgres_url: str) -> None:
             index["name"]: index for index in inspector.get_indexes("watchlist_items")
         }
         assert "uq_watchlist_active_symbol_market" in watchlist_indexes
+        assert "ix_watchlist_items_next_run" in watchlist_indexes
+        watchlist_columns = {
+            column["name"]: column
+            for column in inspector.get_columns("watchlist_items")
+        }
+        assert watchlist_columns["auto_research_enabled"]["nullable"] is False
+        assert watchlist_columns["research_horizon_days"]["nullable"] is False
+        assert watchlist_columns["schedule_time"]["nullable"] is False
+        assert watchlist_columns["schedule_timezone"]["nullable"] is False
+        assert watchlist_columns["next_run_at"]["nullable"] is True
+        assert watchlist_columns["last_run_at"]["nullable"] is True
+        research_run_columns = {
+            column["name"]: column for column in inspector.get_columns("research_runs")
+        }
+        assert research_run_columns["research_window_key"]["nullable"] is True
+        assert research_run_columns["failed_stage"]["nullable"] is True
+        assert research_run_columns["error_type"]["nullable"] is True
+        assert research_run_columns["finished_at"]["nullable"] is True
         research_indexes = {
             index["name"]: index for index in inspector.get_indexes("research_sessions")
         }

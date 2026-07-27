@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -14,7 +14,9 @@ from aios.adapters.llm import LLMStructuredResult
 from aios.adapters.market_data import Adjustment, MarketBar
 from aios.api.routes.brain002 import default_brain002_registry
 from aios.application.research_runner import ResearchRunner
+from aios.application.research_runtime import ResearchRuntimeService
 from aios.application.research_settlement import ResearchSettlementService
+from aios.application.settlement_scheduler import SettlementSchedulerService
 from aios.application.watchlist import WatchlistService
 from aios.integrations.evidence import Evidence as BrainEvidence
 from aios.integrations.provider_records import (
@@ -195,36 +197,62 @@ class FixtureMarketDataAdapter:
         adjustment: Adjustment,
     ) -> list[MarketBar]:
         self.calls += 1
-        bars = [
-            MarketBar(
-                symbol=symbol,
-                market="CN_A",
-                trade_date=AS_OF.date(),
-                open=Decimal("10.00"),
-                high=Decimal("10.00"),
-                low=Decimal("10.00"),
-                close=Decimal("10.00"),
-                volume=Decimal("1000"),
-                amount=Decimal("10000"),
-                adjustment=adjustment,
-                source="fixture-test",
-                fetched_at=AS_OF + timedelta(hours=1),
-            ),
-            MarketBar(
-                symbol=symbol,
-                market="CN_A",
-                trade_date=(AS_OF + timedelta(days=3)).date(),
-                open=Decimal("11.00"),
-                high=Decimal("11.00"),
-                low=Decimal("11.00"),
-                close=Decimal("11.00"),
-                volume=Decimal("1000"),
-                amount=Decimal("11000"),
-                adjustment=adjustment,
-                source="fixture-test",
-                fetched_at=AS_OF + timedelta(days=4),
-            ),
-        ]
+        bars: list[MarketBar] = []
+        current = start_date
+        while current <= end_date:
+            bars.append(
+                MarketBar(
+                    symbol=symbol,
+                    market="CN_A",
+                    trade_date=current,
+                    open=Decimal("10.00"),
+                    high=Decimal("11.00"),
+                    low=Decimal("9.80"),
+                    close=Decimal("10.00"),
+                    volume=Decimal("1000"),
+                    amount=Decimal("10000"),
+                    adjustment=adjustment,
+                    source="fixture-test",
+                    fetched_at=datetime.combine(
+                        current,
+                        time(8, 0),
+                        tzinfo=UTC,
+                    ),
+                )
+            )
+            current += timedelta(days=1)
+        bars.extend(
+            [
+                MarketBar(
+                    symbol=symbol,
+                    market="CN_A",
+                    trade_date=AS_OF.date(),
+                    open=Decimal("10.00"),
+                    high=Decimal("10.00"),
+                    low=Decimal("10.00"),
+                    close=Decimal("10.00"),
+                    volume=Decimal("1000"),
+                    amount=Decimal("10000"),
+                    adjustment=adjustment,
+                    source="fixture-test",
+                    fetched_at=AS_OF + timedelta(hours=1),
+                ),
+                MarketBar(
+                    symbol=symbol,
+                    market="CN_A",
+                    trade_date=(AS_OF + timedelta(days=3)).date(),
+                    open=Decimal("11.00"),
+                    high=Decimal("11.00"),
+                    low=Decimal("11.00"),
+                    close=Decimal("11.00"),
+                    volume=Decimal("1000"),
+                    amount=Decimal("11000"),
+                    adjustment=adjustment,
+                    source="fixture-test",
+                    fetched_at=AS_OF + timedelta(days=4),
+                ),
+            ]
+        )
         return [bar for bar in bars if start_date <= bar.trade_date <= end_date]
 
 
@@ -349,6 +377,40 @@ def test_default_research_runner_executes_brain_lifecycle_and_settles() -> None:
     )
     assert weight_learning.after["application_mode"] == "proposal_only"
     assert len(storage.list(DecisionAssemblyRecord)) == 1
+
+
+def test_research_runtime_connects_brain_trade_plan_to_simulated_execution() -> None:
+    storage, lifecycle, watchlist, llm, market, vibe, _runner = _brain_runner()
+    runtime_date = (datetime.now(UTC) - timedelta(days=1)).date()
+    runtime_as_of = datetime.combine(runtime_date, time(9, 0), tzinfo=UTC)
+
+    result = ResearchRuntimeService(
+        lifecycle=lifecycle,
+        market_data_adapter=market,
+        vibe_trading_adapter=vibe,
+        llm_adapter=llm,
+        brain002_registry=default_brain002_registry(),
+        brain_evidence_repository=FakeBrainEvidenceRepository(_brain_evidence()),
+    ).run_watchlist_item(
+        watchlist_item_id=watchlist.watchlist_item_id,
+        horizon_days=3,
+        as_of=runtime_as_of,
+        workflow="investment_committee",
+        provider="fake",
+        model="fake/model",
+    )
+
+    assert result.run.status == "completed"
+    assert result.trade_plan is not None
+    assert result.execution is not None
+    assert result.execution.trade_plan_id == result.trade_plan.trade_plan_id
+    assert result.execution.research_session_id == result.trade_plan.research_session_id
+    settled = SettlementSchedulerService(
+        storage=storage,
+        market_data_adapter=market,
+    ).run_due_once(as_of=runtime_as_of + timedelta(days=5))
+    assert len(settled.settled) == 1
+    assert settled.settled[0].outcome.execution_id == result.execution.execution_id
 
 
 def test_brain_pipeline_creates_risk_review_before_formal_decision(
