@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, time
 from typing import ClassVar
 
 from pydantic import Field, field_validator, model_validator
@@ -17,6 +17,12 @@ class WatchlistItem(KernelModel):
     market: str = Field(min_length=1, max_length=64)
     note: str | None = Field(default=None, max_length=500)
     status: WatchlistStatus = WatchlistStatus.ACTIVE
+    auto_research_enabled: bool = False
+    research_horizon_days: int = Field(default=3)
+    schedule_time: time = Field(default=time(15, 0))
+    schedule_timezone: str = Field(default="Asia/Shanghai", min_length=1, max_length=64)
+    next_run_at: datetime | None = None
+    last_run_at: datetime | None = None
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
     archived_at: datetime | None = None
@@ -47,7 +53,30 @@ class WatchlistItem(KernelModel):
         normalized = value.strip()
         return normalized or None
 
-    @field_validator("created_at", "updated_at", "archived_at")
+    @field_validator("schedule_timezone")
+    @classmethod
+    def normalize_timezone(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            msg = "schedule_timezone must not be empty"
+            raise ValueError(msg)
+        return normalized
+
+    @field_validator("research_horizon_days")
+    @classmethod
+    def validate_horizon(cls, value: int) -> int:
+        if value not in {1, 3, 7}:
+            msg = "research_horizon_days must be one of 1, 3, or 7"
+            raise ValueError(msg)
+        return value
+
+    @field_validator(
+        "created_at",
+        "updated_at",
+        "archived_at",
+        "next_run_at",
+        "last_run_at",
+    )
     @classmethod
     def validate_datetime(cls, value: datetime | None) -> datetime | None:
         if value is None:

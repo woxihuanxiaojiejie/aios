@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from decimal import Decimal
 
 from aios.kernel.brain002 import SkillExecution, SkillResult
 from aios.kernel.brain003 import DiscussionResult
 from aios.kernel.brain004 import DecisionResult
 from aios.kernel.debate import RiskReview
-from aios.kernel.decision import STABLE_UNAVAILABLE_FIELDS, Decision
+from aios.kernel.decision import STABLE_UNAVAILABLE_FIELDS, TRADEABLE_ACTIONS, Decision
 from aios.kernel.enums import (
     Action,
     DecisionDirection,
@@ -182,6 +183,19 @@ class FormalDecisionService:
             if risk_review.verdict is RiskVerdict.REDUCE_POSITION
             else None
         )
+        trade_defaults = _trade_defaults(decision_result.action, direction, evidence)
+        target_range = trade_defaults.target_range
+        expected_return = trade_defaults.expected_return
+        max_expected_loss = trade_defaults.max_expected_loss
+        if trade_defaults.entry_price is not None:
+            entry_conditions = (
+                str(trade_defaults.entry_price),
+                *entry_conditions,
+            )
+        if stop_loss is None:
+            stop_loss = trade_defaults.stop_loss
+        if position_suggestion is None:
+            position_suggestion = trade_defaults.position_suggestion
         risk_factors = tuple(
             dict.fromkeys(
                 (
@@ -206,12 +220,12 @@ class FormalDecisionService:
         unavailable_fields = _unavailable_fields(
             direction=direction,
             entry_conditions=entry_conditions,
-            target_range=None,
+            target_range=target_range,
             stop_loss=stop_loss,
             invalidation_conditions=invalidation_conditions,
             position_suggestion=position_suggestion,
-            expected_return=None,
-            max_expected_loss=None,
+            expected_return=expected_return,
+            max_expected_loss=max_expected_loss,
             supporting_skill_ids=supporting_skill_ids,
             risk_factors=risk_factors,
             planned_settlement_at=session.scope.valid_until,
@@ -247,8 +261,8 @@ class FormalDecisionService:
             action=action,
             horizon=f"{session.scope.horizon_days}d",
             confidence=confidence,
-            expected_return=None,
-            max_expected_loss=None,
+            expected_return=expected_return,
+            max_expected_loss=max_expected_loss,
             evidence_ids=tuple(decision_result.evidence_refs),
             reasoning_summary=_summary(decision_result, risk_review, downgrade_reasons),
             created_at=session.scope.as_of,
@@ -258,6 +272,7 @@ class FormalDecisionService:
             risk_review_id=risk_review.risk_review_id,
             direction=direction,
             original_direction=original_direction,
+            target_range=target_range,
             entry_conditions=entry_conditions,
             invalidation_conditions=invalidation_conditions,
             stop_loss=stop_loss,
@@ -270,6 +285,79 @@ class FormalDecisionService:
             unavailable_fields=unavailable_fields,
             downgrade_reasons=downgrade_reasons,
         )
+
+
+class _TradeDefaults:
+    def __init__(
+        self,
+        *,
+        entry_price: Decimal | None,
+        target_range: tuple[float, float] | None,
+        stop_loss: float | None,
+        position_suggestion: float | None,
+        expected_return: float | None,
+        max_expected_loss: float | None,
+    ) -> None:
+        self.entry_price = entry_price
+        self.target_range = target_range
+        self.stop_loss = stop_loss
+        self.position_suggestion = position_suggestion
+        self.expected_return = expected_return
+        self.max_expected_loss = max_expected_loss
+
+
+def _trade_defaults(
+    action: Action,
+    direction: DecisionDirection,
+    evidence: tuple[Evidence, ...],
+) -> _TradeDefaults:
+    if action not in TRADEABLE_ACTIONS or direction not in TRADEABLE_DIRECTIONS:
+        return _empty_trade_defaults()
+    close = _latest_market_close(evidence)
+    if close is None:
+        return _empty_trade_defaults()
+    if direction is DecisionDirection.BEARISH:
+        target = close * Decimal("0.97")
+        stop = close * Decimal("1.02")
+    else:
+        target = close * Decimal("1.03")
+        stop = close * Decimal("0.98")
+    return _TradeDefaults(
+        entry_price=close,
+        target_range=(float(target), float(target)),
+        stop_loss=float(stop),
+        position_suggestion=0.25,
+        expected_return=0.03,
+        max_expected_loss=0.02,
+    )
+
+
+def _empty_trade_defaults() -> _TradeDefaults:
+    return _TradeDefaults(
+        entry_price=None,
+        target_range=None,
+        stop_loss=None,
+        position_suggestion=None,
+        expected_return=None,
+        max_expected_loss=None,
+    )
+
+
+def _latest_market_close(evidence: tuple[Evidence, ...]) -> Decimal | None:
+    market_evidence = [
+        item
+        for item in evidence
+        if item.evidence_type == "market_daily_bar"
+        and isinstance(item.metadata.get("market_bar"), dict)
+    ]
+    if not market_evidence:
+        return None
+    latest = max(market_evidence, key=lambda item: item.published_at)
+    market_bar = latest.metadata["market_bar"]
+    close = market_bar.get("close")
+    if close is None:
+        return None
+    return Decimal(str(close))
 
 
 def _final_direction(

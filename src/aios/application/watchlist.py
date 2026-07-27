@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, time
+
 from aios.adapters.storage import Storage
 from aios.kernel.base import utc_now
 from aios.kernel.enums import WatchlistStatus
@@ -8,6 +10,13 @@ from aios.kernel.errors import (
     InvalidStateTransitionError,
 )
 from aios.kernel.watchlist import WatchlistItem
+
+
+class _Unset:
+    pass
+
+
+_UNSET = _Unset()
 
 
 class WatchlistService:
@@ -20,8 +29,22 @@ class WatchlistService:
         symbol: str,
         market: str,
         note: str | None = None,
+        auto_research_enabled: bool = False,
+        research_horizon_days: int = 3,
+        schedule_time: time = time(15, 0),
+        schedule_timezone: str = "Asia/Shanghai",
+        next_run_at: datetime | None = None,
     ) -> WatchlistItem:
-        candidate = WatchlistItem(symbol=symbol, market=market, note=note)
+        candidate = WatchlistItem(
+            symbol=symbol,
+            market=market,
+            note=note,
+            auto_research_enabled=auto_research_enabled,
+            research_horizon_days=research_horizon_days,
+            schedule_time=schedule_time,
+            schedule_timezone=schedule_timezone,
+            next_run_at=next_run_at,
+        )
         self._ensure_no_active_duplicate(candidate.market, candidate.symbol)
         self._storage.save(candidate)
         return candidate
@@ -45,12 +68,37 @@ class WatchlistService:
         )
 
     def update_note(self, item_id: str, *, note: str | None) -> WatchlistItem:
+        return self.update_item(item_id, note=note)
+
+    def update_item(
+        self,
+        item_id: str,
+        *,
+        note: str | None | object = _UNSET,
+        auto_research_enabled: bool | object = _UNSET,
+        research_horizon_days: int | object = _UNSET,
+        schedule_time: time | object = _UNSET,
+        schedule_timezone: str | object = _UNSET,
+        next_run_at: datetime | None | object = _UNSET,
+        last_run_at: datetime | None | object = _UNSET,
+    ) -> WatchlistItem:
         item = self.get_item(item_id)
+        updates: dict[str, object] = {"updated_at": utc_now()}
+        for key, value in {
+            "note": note,
+            "auto_research_enabled": auto_research_enabled,
+            "research_horizon_days": research_horizon_days,
+            "schedule_time": schedule_time,
+            "schedule_timezone": schedule_timezone,
+            "next_run_at": next_run_at,
+            "last_run_at": last_run_at,
+        }.items():
+            if value is not _UNSET:
+                updates[key] = value
         replacement = WatchlistItem(
             **{
                 **item.model_dump(),
-                "note": note,
-                "updated_at": utc_now(),
+                **updates,
             }
         )
         self._storage.replace(replacement)

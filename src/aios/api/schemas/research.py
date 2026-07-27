@@ -12,6 +12,7 @@ from aios.api.schemas.evidence import EvidenceResponse
 from aios.api.schemas.experiment import ExperimentResponse
 from aios.api.schemas.learning import LearningResponse, learning_response
 from aios.api.schemas.market_data import MarketBarResponse
+from aios.api.schemas.research_run import ResearchRunResponse
 from aios.api.schemas.review import ReviewResponse
 from aios.kernel.enums import (
     DecisionDirection,
@@ -189,6 +190,28 @@ class ResearchSettlementResponse(ApiSchema):
     evaluation: DecisionEvaluationResponse
     review: ReviewResponse
     learning_proposal: LearningResponse | None = None
+
+
+class RuntimeResearchResponse(ApiSchema):
+    run: ResearchRunResponse
+    trade_plan: TradePlanResponse | None = None
+    simulated_execution: SimulatedExecutionResponse | None = None
+
+
+class SchedulerErrorResponse(ApiSchema):
+    id: str
+    error_type: str
+    error_message: str
+
+
+class ResearchSchedulerRunOnceResponse(ApiSchema):
+    runs: list[ResearchRunResponse]
+    errors: list[SchedulerErrorResponse]
+
+
+class SettlementSchedulerRunOnceResponse(ApiSchema):
+    settled: int
+    errors: list[SchedulerErrorResponse]
 
 
 class ResearchSettlementRecordResponse(ApiSchema):

@@ -224,6 +224,7 @@ label {
 }
 
 input,
+select,
 textarea {
   width: 100%;
   min-height: 36px;
@@ -232,6 +233,17 @@ textarea {
   background: #fff;
   color: #1f2933;
   padding: 8px 9px;
+}
+
+.inline-option {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.inline-option input {
+  width: auto;
+  min-height: auto;
 }
 
 textarea {

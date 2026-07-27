@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, time
 from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     Float,
@@ -13,6 +14,7 @@ from sqlalchemy import (
     Integer,
     Numeric,
     String,
+    Time,
     UniqueConstraint,
     text,
 )
@@ -853,8 +855,13 @@ class WatchlistItemRecord(Base):
             "updated_at >= created_at",
             "ck_watchlist_updated_at",
         ),
+        CheckConstraint(
+            "research_horizon_days in (1, 3, 7)",
+            "ck_watchlist_research_horizon_days",
+        ),
         Index("ix_watchlist_items_status", "status"),
         Index("ix_watchlist_items_market_symbol", "market", "symbol"),
+        Index("ix_watchlist_items_next_run", "auto_research_enabled", "next_run_at"),
         Index(
             "uq_watchlist_active_symbol_market",
             "market",
@@ -869,6 +876,12 @@ class WatchlistItemRecord(Base):
     market: Mapped[str] = mapped_column(String(64), nullable=False)
     note: Mapped[str | None] = mapped_column(String(500), nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
+    auto_research_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    research_horizon_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    schedule_time: Mapped[time] = mapped_column(Time, nullable=False)
+    schedule_timezone: Mapped[str] = mapped_column(String(64), nullable=False)
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
@@ -1396,6 +1409,8 @@ class ResearchRunRecord(Base):
 
     run_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     research_session_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    symbol: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    research_window_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
     watchlist_item_id: Mapped[str] = mapped_column(
         String(64),
         ForeignKey("watchlist_items.id", ondelete="RESTRICT"),
@@ -1407,7 +1422,10 @@ class ResearchRunRecord(Base):
     workflow: Mapped[str] = mapped_column(String(128), nullable=False)
     input_params: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     raw_output_reference: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    failed_stage: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
     error: Mapped[str | None] = mapped_column(String, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )

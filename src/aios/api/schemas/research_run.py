@@ -27,13 +27,18 @@ class ResearchRunResponse(ApiSchema):
     run_id: str
     research_session_id: str | None
     watchlist_item_id: str
+    symbol: str | None
+    research_window_key: str | None
     current_stage: ResearchRunStage
     status: ResearchRunStatus
     vibe_run_id: str | None
     workflow: str
     input_params: dict[str, Any]
     raw_output_reference: str | None
+    failed_stage: str | None
+    error_type: str | None
     error: str | None
+    finished_at: datetime | None
     created_at: datetime
     updated_at: datetime
 

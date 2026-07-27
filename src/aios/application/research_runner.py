@@ -109,7 +109,10 @@ class ResearchRunner:
                 update={
                     "status": "failed",
                     "current_stage": "failed",
+                    "failed_stage": latest.current_stage,
+                    "error_type": type(exc).__name__,
                     "error": str(exc),
+                    "finished_at": utc_now(),
                     "updated_at": utc_now(),
                 }
             )
@@ -442,6 +445,11 @@ class ResearchRunner:
                 return run
         run = ResearchRun(
             watchlist_item_id=params["watchlist_item_id"],
+            symbol=watchlist.symbol,
+            research_window_key=(
+                f"{watchlist.market}:{watchlist.symbol}:"
+                f"{params['horizon_days']}:{params['as_of'].isoformat()}"
+            ),
             workflow=params["workflow"],
             input_params=input_params,
         )
@@ -455,6 +463,9 @@ class ResearchRunner:
                 "status": "completed",
                 "current_stage": "completed",
                 "error": None,
+                "failed_stage": None,
+                "error_type": None,
+                "finished_at": utc_now(),
                 "updated_at": utc_now(),
             }
         )

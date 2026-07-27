@@ -37,6 +37,24 @@ services:
       postgres:
         condition: service_healthy
 
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    environment:
+      AIOS_DATABASE_URL: postgresql+psycopg://aios:aios@postgres:5432/aios
+    volumes:
+      - type: bind
+        source: ./.env
+        target: /app/.env
+        read_only: true
+    command: >
+      sh -c "uv run alembic upgrade head &&
+      uv run aios scheduler serve"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   frontend:
     build:
       context: .

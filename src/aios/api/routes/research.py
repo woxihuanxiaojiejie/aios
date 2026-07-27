@@ -5,7 +5,9 @@ from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, Query, Response, status
 
-from aios.adapters.market_data import Adjustment
+from aios.adapters.llm import LLMAdapter
+from aios.adapters.market_data import Adjustment, MarketDataAdapter
+from aios.adapters.vibe_trading import VibeTradingResearchAdapter
 from aios.api.dependencies import (
     BaoStockMarketDataAdapterDep,
     Brain002RegistryDep,
@@ -48,8 +50,12 @@ from aios.api.schemas.research import (
     ResearchHistoryResponse,
     ResearchHistoryRow,
     ResearchMarketResponse,
+    ResearchSchedulerRunOnceResponse,
     ResearchSettlementRequest,
     ResearchSettlementResponse,
+    RuntimeResearchResponse,
+    SchedulerErrorResponse,
+    SettlementSchedulerRunOnceResponse,
     SimulatedExecutionResponse,
     TradePlanResponse,
     decision_evaluation_response,
@@ -84,6 +90,8 @@ from aios.api.schemas.watchlist import (
     WatchlistUpdateRequest,
     watchlist_item_response,
 )
+from aios.application.brain002 import SkillRegistry
+from aios.application.brain_research_pipeline import BrainEvidenceRepository
 from aios.application.debate import DebateService
 from aios.application.decision_generation import DecisionGenerationService
 from aios.application.decision_settlement import DecisionSettlementService
@@ -91,12 +99,19 @@ from aios.application.market_evidence import MarketEvidenceImportService
 from aios.application.research_lifecycle import ResearchLifecycleService
 from aios.application.research_records import ResearchRecordService
 from aios.application.research_runner import ResearchRunner
+from aios.application.research_runtime import (
+    ResearchRuntimeResult,
+    ResearchRuntimeService,
+)
+from aios.application.research_scheduler import ResearchSchedulerService
 from aios.application.research_session import ResearchSessionService
 from aios.application.research_settlement import ResearchSettlementService
 from aios.application.settlement import SettlementService
+from aios.application.settlement_scheduler import SettlementSchedulerService
 from aios.application.simulated_execution import SimulatedExecutionService
 from aios.application.trade_plan import TradePlanService
 from aios.application.watchlist import WatchlistService
+from aios.integrations.trading_calendar import MarketTradingCalendar
 from aios.kernel.decision import Decision
 from aios.kernel.enums import (
     AgentReportStatus,
@@ -113,6 +128,7 @@ from aios.kernel.research_run import ResearchRun
 from aios.kernel.review import Review
 from aios.kernel.settlement import DecisionOutcome
 from aios.kernel.trade_plan import TradePlan
+from aios.workflows.decision_lifecycle import DecisionLifecycleService
 
 router = APIRouter(prefix="/research", tags=["research"])
 
@@ -159,6 +175,103 @@ def get_research_run(
 ) -> ResearchRunResponse:
     run = lifecycle.storage.get(ResearchRun, run_id)
     return research_run_response(run)
+
+
+@router.post(
+    "/watchlist/{item_id}/run",
+    response_model=RuntimeResearchResponse,
+)
+def run_watchlist_research(
+    item_id: str,
+    lifecycle: LifecycleDep,
+    adapter: MarketDataAdapterDep,
+    vibe_adapter: VibeTradingAdapterDep,
+    llm_adapter: LLMAdapterDep,
+    registry: Brain002RegistryDep,
+    brain_evidence_repository: BrainEvidenceRepositoryDep,
+) -> RuntimeResearchResponse:
+    item = WatchlistService(lifecycle.storage).get_item(item_id)
+    result = _runtime(
+        lifecycle=lifecycle,
+        adapter=adapter,
+        vibe_adapter=vibe_adapter,
+        llm_adapter=llm_adapter,
+        registry=registry,
+        brain_evidence_repository=brain_evidence_repository,
+    ).run_watchlist_item(
+        watchlist_item_id=item.watchlist_item_id,
+        horizon_days=item.research_horizon_days,
+        as_of=datetime.now(UTC),
+        workflow="investment_committee",
+        provider=os.getenv("AIOS_RESEARCH_PROVIDER", "deepseek"),
+        model=os.getenv("AIOS_RESEARCH_MODEL", "deepseek/deepseek-chat"),
+    )
+    return _runtime_research_response(result)
+
+
+@router.post(
+    "/scheduler/run-once",
+    response_model=ResearchSchedulerRunOnceResponse,
+)
+def run_research_scheduler_once(
+    lifecycle: LifecycleDep,
+    adapter: MarketDataAdapterDep,
+    vibe_adapter: VibeTradingAdapterDep,
+    llm_adapter: LLMAdapterDep,
+    registry: Brain002RegistryDep,
+    brain_evidence_repository: BrainEvidenceRepositoryDep,
+) -> ResearchSchedulerRunOnceResponse:
+    result = ResearchSchedulerService(
+        storage=lifecycle.storage,
+        runtime=_runtime(
+            lifecycle=lifecycle,
+            adapter=adapter,
+            vibe_adapter=vibe_adapter,
+            llm_adapter=llm_adapter,
+            registry=registry,
+            brain_evidence_repository=brain_evidence_repository,
+        ),
+        trading_calendar=MarketTradingCalendar(),
+        workflow="investment_committee",
+        provider=os.getenv("AIOS_RESEARCH_PROVIDER", "deepseek"),
+        model=os.getenv("AIOS_RESEARCH_MODEL", "deepseek/deepseek-chat"),
+    ).run_due_once(as_of=datetime.now(UTC))
+    return ResearchSchedulerRunOnceResponse(
+        runs=[research_run_response(run) for run in result.runs],
+        errors=[
+            SchedulerErrorResponse(
+                id=error.watchlist_item_id,
+                error_type=error.error_type,
+                error_message=error.error_message,
+            )
+            for error in result.errors
+        ],
+    )
+
+
+@router.post(
+    "/settlement/run-once",
+    response_model=SettlementSchedulerRunOnceResponse,
+)
+def run_settlement_scheduler_once(
+    lifecycle: LifecycleDep,
+    adapter: MarketDataAdapterDep,
+) -> SettlementSchedulerRunOnceResponse:
+    result = SettlementSchedulerService(
+        storage=lifecycle.storage,
+        market_data_adapter=adapter,
+    ).run_due_once(as_of=datetime.now(UTC))
+    return SettlementSchedulerRunOnceResponse(
+        settled=len(result.settled),
+        errors=[
+            SchedulerErrorResponse(
+                id=error.execution_id,
+                error_type=error.error_type,
+                error_message=error.error_message,
+            )
+            for error in result.errors
+        ],
+    )
 
 
 @router.post("/runs/{run_id}/resume", response_model=ResearchRunResponse)
@@ -230,10 +343,8 @@ def update_watchlist_item(
     request: WatchlistUpdateRequest,
     lifecycle: LifecycleDep,
 ) -> WatchlistItemResponse:
-    item = WatchlistService(lifecycle.storage).update_note(
-        item_id,
-        note=request.note,
-    )
+    updates = request.model_dump(exclude_unset=True)
+    item = WatchlistService(lifecycle.storage).update_item(item_id, **updates)
     return watchlist_item_response(item)
 
 
@@ -877,6 +988,39 @@ def _latest_by_id(items: list[Evidence], ids: list[str]) -> Evidence | None:
 
 def _ids(items: list[Evidence]) -> list[str]:
     return [item.evidence_id for item in items]
+
+
+def _runtime(
+    *,
+    lifecycle: DecisionLifecycleService,
+    adapter: MarketDataAdapter,
+    vibe_adapter: VibeTradingResearchAdapter,
+    llm_adapter: LLMAdapter,
+    registry: SkillRegistry,
+    brain_evidence_repository: BrainEvidenceRepository | None,
+) -> ResearchRuntimeService:
+    return ResearchRuntimeService(
+        lifecycle=lifecycle,
+        market_data_adapter=adapter,
+        vibe_trading_adapter=vibe_adapter,
+        llm_adapter=llm_adapter,
+        brain002_registry=registry,
+        brain_evidence_repository=brain_evidence_repository,
+    )
+
+
+def _runtime_research_response(
+    result: ResearchRuntimeResult,
+) -> RuntimeResearchResponse:
+    return RuntimeResearchResponse(
+        run=research_run_response(result.run),
+        trade_plan=trade_plan_response(result.trade_plan)
+        if result.trade_plan is not None
+        else None,
+        simulated_execution=simulated_execution_response(result.execution)
+        if result.execution is not None
+        else None,
+    )
 
 
 def _today() -> date:

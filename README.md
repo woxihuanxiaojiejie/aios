@@ -7,11 +7,12 @@ decision lifecycle kernel:
 Evidence -> Experiment -> Decision -> Review -> Learning
 ```
 
-This repository is intentionally narrow. It does not include schedulers, trading
-adapters, agent frameworks, RAG frameworks, backtesting engines, broker
-integrations, or Learning automation. PostgreSQL support is implemented only as
-a storage adapter behind the kernel storage protocol, and the HTTP API is a thin
-lifecycle boundary over the existing service. AKShare and BaoStock support are
+This repository is intentionally narrow. It does not include broker
+integrations, real order placement, RAG frameworks, backtesting engines, or
+Learning automation. PostgreSQL is the durable business store. APScheduler is
+used only by the standalone scheduler process to wake two fixed scan services;
+per-symbol research state remains in Watchlist, ResearchRun, SimulatedExecution,
+Settlement, and idempotent business records. AKShare and BaoStock support are
 independent market-data providers that use the same `MarketDataAdapter` protocol
 to import A-share daily bars as `Evidence`.
 
@@ -142,12 +143,28 @@ GET  /api/v1/research/watchlist/{item_id}
 PATCH /api/v1/research/watchlist/{item_id}
 POST /api/v1/research/watchlist/{item_id}/archive
 POST /api/v1/research/watchlist/{item_id}/restore
+POST /api/v1/research/watchlist/{item_id}/run
+POST /api/v1/research/scheduler/run-once
+POST /api/v1/research/settlement/run-once
 GET  /api/v1/research/market
 POST /api/v1/research/evidence
 POST /api/v1/research/experiments
 POST /api/v1/research/decisions
 POST /api/v1/research/settlements/{decision_id}
 GET  /api/v1/research/history
+```
+
+Run the standalone scheduler process against PostgreSQL:
+
+```bash
+uv run aios scheduler serve
+```
+
+Run one due scan manually:
+
+```bash
+uv run aios scheduler run-once
+uv run aios settlement run-once
 ```
 
 List endpoints support `limit` and `offset`. `limit` defaults to 50 and is capped

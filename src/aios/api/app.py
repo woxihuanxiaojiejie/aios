@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import asyncio
 import os
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager, suppress
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -28,7 +25,6 @@ from aios.api.routes import (
     reviews,
 )
 from aios.application.decision_generation import GenerationRecorder
-from aios.application.research_settlement_worker import ResearchSettlementWorker
 from aios.integrations.akshare.adapter import AKShareMarketDataAdapter
 from aios.integrations.baostock.adapter import BaoStockMarketDataAdapter
 from aios.integrations.litellm.adapter import LiteLLMAdapter
@@ -51,31 +47,7 @@ def create_app(
 ) -> FastAPI:
     load_dotenv(override=True)
 
-    @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        if app.state.research_settlement_worker_enabled:
-            worker = ResearchSettlementWorker(
-                storage=app.state.storage,
-                market_data_adapter=app.state.market_data_adapter,
-            )
-            app.state.research_settlement_worker = worker
-            app.state.research_settlement_worker_task = asyncio.create_task(
-                worker.run_forever(
-                    interval_seconds=app.state.research_settlement_interval_seconds,
-                    stop_event=app.state.research_settlement_worker_stop,
-                )
-            )
-        try:
-            yield
-        finally:
-            task = app.state.research_settlement_worker_task
-            if task is not None:
-                app.state.research_settlement_worker_stop.set()
-                task.cancel()
-                with suppress(asyncio.CancelledError):
-                    await task
-
-    app = FastAPI(title="AIOS", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="AIOS", version="0.1.0")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_cors_origins(),
@@ -98,18 +70,6 @@ def create_app(
     )
     app.state.vibe_trading_adapter = vibe_trading_adapter or VibeTradingAdapter()
     app.state.brain002_registry = brain002.default_brain002_registry()
-    app.state.research_settlement_worker_enabled = (
-        _research_settlement_worker_enabled()
-        if enable_research_settlement_worker is None
-        else enable_research_settlement_worker
-    )
-    app.state.research_settlement_interval_seconds = (
-        research_settlement_interval_seconds
-        if research_settlement_interval_seconds is not None
-        else _research_settlement_interval_seconds()
-    )
-    app.state.research_settlement_worker_stop = asyncio.Event()
-    app.state.research_settlement_worker_task = None
     add_exception_handlers(app)
 
     app.include_router(health.router)
@@ -155,15 +115,3 @@ def _cors_origins() -> list[str]:
         "http://127.0.0.1:4173",
         "http://localhost:4173",
     ]
-
-
-def _research_settlement_worker_enabled() -> bool:
-    configured = os.getenv("AIOS_RESEARCH_SETTLEMENT_WORKER_ENABLED", "1")
-    return configured.strip().lower() not in {"0", "false", "no", "off"}
-
-
-def _research_settlement_interval_seconds() -> float:
-    configured = os.getenv("AIOS_RESEARCH_SETTLEMENT_INTERVAL_SECONDS")
-    if not configured:
-        return 300.0
-    return max(1.0, float(configured))

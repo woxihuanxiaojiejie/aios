@@ -70,9 +70,31 @@ export type WatchlistItem = {
   market: string;
   note: string | null;
   status: string;
+  auto_research_enabled: boolean;
+  research_horizon_days: number;
+  schedule_time: string;
+  schedule_timezone: string;
+  next_run_at: string | null;
+  last_run_at: string | null;
   created_at: string;
   updated_at: string;
   archived_at: string | null;
+};
+
+export type ResearchRun = {
+  run_id: string;
+  research_session_id: string | null;
+  watchlist_item_id: string;
+  symbol: string | null;
+  research_window_key: string | null;
+  current_stage: string;
+  status: string;
+  failed_stage: string | null;
+  error_type: string | null;
+  error: string | null;
+  finished_at: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type ResearchSession = {
@@ -234,6 +256,39 @@ export type DecisionRunResponse = {
   generation: Generation;
 };
 
+export type TradePlan = {
+  trade_plan_id: string;
+  decision_id: string;
+  research_session_id: string;
+  symbol: string;
+  direction: string;
+  status: string;
+  horizon: string;
+  expiry: string;
+  no_trade_reasons: string[];
+  unavailable_fields: string[];
+};
+
+export type SimulatedExecution = {
+  execution_id: string;
+  trade_plan_id: string;
+  decision_id: string;
+  research_session_id: string;
+  symbol: string;
+  direction: string;
+  execution_status: string;
+  execution_date: string | null;
+  exit_reason: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type RuntimeResearchResponse = {
+  run: ResearchRun;
+  trade_plan: TradePlan | null;
+  simulated_execution: SimulatedExecution | null;
+};
+
 export type Outcome = {
   outcome_id: string;
   decision_id: string;
@@ -389,6 +444,48 @@ export const researchApi = {
       method: "POST",
       body: JSON.stringify({ symbol, market, note: note || null }),
     });
+  },
+  updateWatchlist(
+    itemId: string,
+    payload: Partial<
+      Pick<
+        WatchlistItem,
+        | "auto_research_enabled"
+        | "research_horizon_days"
+        | "schedule_time"
+        | "schedule_timezone"
+        | "next_run_at"
+      >
+    >,
+  ) {
+    return request<WatchlistItem>(`/research/watchlist/${itemId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+  runWatchlist(itemId: string) {
+    return request<RuntimeResearchResponse>(`/research/watchlist/${itemId}/run`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+  },
+  runSchedulerOnce() {
+    return request<{ runs: ResearchRun[]; errors: unknown[] }>(
+      "/research/scheduler/run-once",
+      {
+        method: "POST",
+        body: JSON.stringify({}),
+      },
+    );
+  },
+  runSettlementOnce() {
+    return request<{ settled: SettlementResponse[]; errors: unknown[] }>(
+      "/research/settlement/run-once",
+      {
+        method: "POST",
+        body: JSON.stringify({}),
+      },
+    );
   },
   listEvidence() {
     return request<ListResponse<Evidence>>("/evidence");

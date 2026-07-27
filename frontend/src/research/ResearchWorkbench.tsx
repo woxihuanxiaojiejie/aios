@@ -59,6 +59,10 @@ export function ResearchWorkbench() {
   const [watchSymbol, setWatchSymbol] = useState("600519");
   const [watchMarket, setWatchMarket] = useState("CN");
   const [watchNote, setWatchNote] = useState("人工验收");
+  const [watchAutoResearch, setWatchAutoResearch] = useState(false);
+  const [watchScheduleTime, setWatchScheduleTime] = useState("15:00:00");
+  const [watchScheduleTimezone, setWatchScheduleTimezone] =
+    useState("Asia/Shanghai");
   const [evidenceSummary, setEvidenceSummary] = useState("人工验收证据");
   const [evidenceHash, setEvidenceHash] = useState(() => `manual-${Date.now()}`);
   const [sessionAsOf, setSessionAsOf] = useState(inHoursIso(1));
@@ -120,6 +124,14 @@ export function ResearchWorkbench() {
     () => sortByCreatedAt(watchlistQuery.data?.items ?? []),
     [watchlistQuery.data?.items],
   );
+
+  useEffect(() => {
+    if (!chain.watchlist) return;
+    setWatchAutoResearch(chain.watchlist.auto_research_enabled);
+    setHorizonDays(chain.watchlist.research_horizon_days);
+    setWatchScheduleTime(chain.watchlist.schedule_time);
+    setWatchScheduleTimezone(chain.watchlist.schedule_timezone);
+  }, [chain.watchlist]);
   const evidenceItems = useMemo(
     () => sortByCreatedAt(evidenceQuery.data?.items ?? []),
     [evidenceQuery.data?.items],
@@ -280,6 +292,66 @@ export function ResearchWorkbench() {
               })
             }
           />
+          <div className="form-grid">
+            <label className="inline-option">
+              <input
+                type="checkbox"
+                checked={watchAutoResearch}
+                onChange={(event) => setWatchAutoResearch(event.target.checked)}
+              />
+              自动研究
+            </label>
+            <label>
+              研究周期
+              <select
+                value={horizonDays}
+                onChange={(event) => setHorizonDays(Number(event.target.value))}
+              >
+                <option value={1}>1d</option>
+                <option value={3}>3d</option>
+                <option value={7}>1w</option>
+              </select>
+            </label>
+            <label>
+              运行时间
+              <input
+                value={watchScheduleTime}
+                onChange={(event) => setWatchScheduleTime(event.target.value)}
+              />
+            </label>
+            <label>
+              时区
+              <input
+                value={watchScheduleTimezone}
+                onChange={(event) =>
+                  setWatchScheduleTimezone(event.target.value)
+                }
+              />
+            </label>
+          </div>
+          <ActionButton
+            label="保存调度"
+            pending={mutations.updateWatchlist.isPending}
+            disabledReason={
+              chain.watchlist ? undefined : "请先新增或选择自选股票。"
+            }
+            onClick={() =>
+              mutations.updateWatchlist.mutate({
+                auto_research_enabled: watchAutoResearch,
+                research_horizon_days: horizonDays,
+                schedule_time: watchScheduleTime,
+                schedule_timezone: watchScheduleTimezone,
+              })
+            }
+          />
+          <ActionButton
+            label="手动运行研究"
+            pending={mutations.runWatchlist.isPending}
+            disabledReason={
+              chain.watchlist ? undefined : "请先新增或选择自选股票。"
+            }
+            onClick={() => mutations.runWatchlist.mutate(undefined)}
+          />
           <EntityList
             items={watchlistItems}
             getId={(item) => item.watchlist_item_id}
@@ -293,6 +365,15 @@ export function ResearchWorkbench() {
             rows={[
               ["自选股票内部编号", chain.watchlist?.watchlist_item_id],
               ["状态原值", chain.watchlist?.status],
+              [
+                "自动研究",
+                chain.watchlist?.auto_research_enabled ? "已开启" : "已关闭",
+              ],
+              ["研究周期", chain.watchlist?.research_horizon_days],
+              ["运行时间", chain.watchlist?.schedule_time],
+              ["调度时区", chain.watchlist?.schedule_timezone],
+              ["下次运行", formatOptionalDateTime(chain.watchlist?.next_run_at)],
+              ["上次运行", formatOptionalDateTime(chain.watchlist?.last_run_at)],
             ]}
           />
         </Panel>
@@ -570,6 +651,30 @@ function useLifecycleMutations({
       (input: { symbol: string; market: string; note: string }) =>
         researchApi.addWatchlist(input.symbol, input.market, input.note),
       (watchlist) => setChain((current) => ({ ...current, watchlist })),
+      setError,
+      setOperation,
+      invalidate,
+    ),
+    updateWatchlist: useLifecycleMutation(
+      "保存自选股票调度",
+      "watchlist",
+      (input: {
+        auto_research_enabled: boolean;
+        research_horizon_days: number;
+        schedule_time: string;
+        schedule_timezone: string;
+      }) =>
+        researchApi.updateWatchlist(chain.watchlist!.watchlist_item_id, input),
+      (watchlist) => setChain((current) => ({ ...current, watchlist })),
+      setError,
+      setOperation,
+      invalidate,
+    ),
+    runWatchlist: useLifecycleMutation(
+      "手动运行研究",
+      "research",
+      () => researchApi.runWatchlist(chain.watchlist!.watchlist_item_id),
+      () => undefined,
       setError,
       setOperation,
       invalidate,
@@ -1065,6 +1170,10 @@ function formatDateTime(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function formatOptionalDateTime(value: string | null | undefined) {
+  return value ? formatDateTime(value) : undefined;
 }
 
 function sessionDisabledReason(chain: ChainState) {

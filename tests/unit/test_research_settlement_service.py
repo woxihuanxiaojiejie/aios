@@ -467,7 +467,7 @@ def test_research_settlement_worker_automatically_scans_due_assemblies() -> None
     assert len(storage.list(Learning)) == 2
 
 
-def test_app_lifespan_starts_research_settlement_worker() -> None:
+def test_app_lifespan_does_not_start_scheduler_worker() -> None:
     storage, decision = seed_due_research_decision()
     adapter = FixtureMarketDataAdapter(
         [
@@ -484,14 +484,12 @@ def test_app_lifespan_starts_research_settlement_worker() -> None:
             research_settlement_interval_seconds=60,
         )
     ):
-        deadline = time.monotonic() + 2
-        while len(storage.list(Learning)) < 2 and time.monotonic() < deadline:
-            time.sleep(0.01)
+        time.sleep(0.01)
 
-    assert adapter.calls == 1
-    assert len(storage.list(DecisionOutcome)) == 1
-    assert len(storage.list(DecisionEvaluation)) == 1
-    assert len(storage.list(Learning)) == 2
+    assert adapter.calls == 0
+    assert len(storage.list(DecisionOutcome)) == 0
+    assert len(storage.list(DecisionEvaluation)) == 0
+    assert len(storage.list(Learning)) == 0
 
 
 def seed_due_research_decision() -> tuple[InMemoryStorage, Decision]:

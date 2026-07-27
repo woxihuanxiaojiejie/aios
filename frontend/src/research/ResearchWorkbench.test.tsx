@@ -160,15 +160,44 @@ async function fetchResponse(input: RequestInfo | URL, init?: RequestInit) {
       return jsonError(409, "conflict", "duplicate watchlist item");
     }
     const body = JSON.parse(String(init?.body)) as { symbol: string; market: string };
-    return json({
+    return json(watchlistFixture({
       watchlist_item_id: "wl_test",
       symbol: body.symbol,
       market: body.market,
       note: null,
-      status: "active",
-      created_at: "2026-07-22T00:00:00Z",
-      updated_at: "2026-07-22T00:00:00Z",
-      archived_at: null,
+    }));
+  }
+  if (method === "PATCH" && url.includes("/research/watchlist/")) {
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    return json(
+      watchlistFixture({
+        watchlist_item_id: "wl_test",
+        symbol: "600519",
+        market: "CN",
+        note: null,
+        ...body,
+      }),
+    );
+  }
+  if (method === "POST" && url.endsWith("/run")) {
+    return json({
+      run: {
+        run_id: "rr_test",
+        research_session_id: "rs_test",
+        watchlist_item_id: "wl_test",
+        symbol: "600519",
+        research_window_key: "CN:600519:3:2026-07-22T00:00:00Z",
+        current_stage: "completed",
+        status: "completed",
+        failed_stage: null,
+        error_type: null,
+        error: null,
+        finished_at: "2026-07-22T00:00:00Z",
+        created_at: "2026-07-22T00:00:00Z",
+        updated_at: "2026-07-22T00:00:00Z",
+      },
+      trade_plan: null,
+      simulated_execution: null,
     });
   }
   if (method === "POST" && url.endsWith("/evidence")) {
@@ -315,16 +344,12 @@ async function fetchResponse(input: RequestInfo | URL, init?: RequestInit) {
     return json({
       items: initialData
         ? [
-            {
+            watchlistFixture({
               watchlist_item_id: "wl_initial",
               symbol: "AIOS 初始记录",
               market: "CN",
               note: null,
-              status: "active",
-              created_at: "2026-07-22T00:00:00Z",
-              updated_at: "2026-07-22T00:00:00Z",
-              archived_at: null,
-            },
+            }),
           ]
         : [],
       total: initialData ? 1 : 0,
@@ -480,6 +505,29 @@ async function fetchResponse(input: RequestInfo | URL, init?: RequestInit) {
     });
   }
   return json({ items: [], total: 0, limit: 50, offset: 0 });
+}
+
+function watchlistFixture(
+  overrides: Partial<Record<string, unknown>> & {
+    watchlist_item_id: string;
+    symbol: string;
+    market: string;
+  },
+) {
+  return {
+    note: null,
+    status: "active",
+    auto_research_enabled: false,
+    research_horizon_days: 3,
+    schedule_time: "15:00:00",
+    schedule_timezone: "Asia/Shanghai",
+    next_run_at: null,
+    last_run_at: null,
+    created_at: "2026-07-22T00:00:00Z",
+    updated_at: "2026-07-22T00:00:00Z",
+    archived_at: null,
+    ...overrides,
+  };
 }
 
 function json(payload: unknown) {
