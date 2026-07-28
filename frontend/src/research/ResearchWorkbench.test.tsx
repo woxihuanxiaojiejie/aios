@@ -120,6 +120,20 @@ describe("ResearchWorkbench", () => {
     expect(screen.getByText("尚未到达预测截止时间")).toBeInTheDocument();
   });
 
+  it("输入达到预测截止时间的结算时间后允许手动结算", async () => {
+    sessionValidUntil = futureIso(3);
+    const user = userEvent.setup();
+    renderWorkbench();
+
+    await advanceToAssembly(user);
+    await user.clear(screen.getByLabelText("结算时间"));
+    await user.type(screen.getByLabelText("结算时间"), futureIso(5));
+
+    expect(screen.getByText("可结算")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /执行结算/ })).not.toBeDisabled();
+    expect(screen.queryByText("尚未到达预测截止时间")).not.toBeInTheDocument();
+  });
+
   it("结算未到期错误映射为中文且不把阶段显示为失败", async () => {
     failSettlementNotReady = true;
     sessionValidUntil = "2000-01-01T00:00:00Z";

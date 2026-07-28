@@ -200,7 +200,7 @@ export function ResearchWorkbench() {
     ? `${operation.label}${operation.phase}`
     : "等待操作";
 
-  const settlementNotDue = isSettlementNotDue(chain);
+  const settlementNotDue = isSettlementNotDue(chain, settleAsOf);
   const finalizeReason = !chain.proposal
     ? "请先创建决策建议。"
     : !chain.riskReview
@@ -602,7 +602,7 @@ export function ResearchWorkbench() {
           </div>
           <div className="settlement-status">
             <span>当前结算状态</span>
-            <strong>{settlementStatus(chain)}</strong>
+            <strong>{settlementStatus(chain, settleAsOf)}</strong>
           </div>
           <div className="settlement-status">
             <span>预计可结算时间：</span>
@@ -1238,16 +1238,19 @@ function formatError(error: unknown) {
   return "操作失败：未知错误";
 }
 
-function isSettlementNotDue(chain: ChainState) {
+function isSettlementNotDue(chain: ChainState, settleAsOf = "") {
   if (!chain.assembly || chain.settlement || !chain.session) return false;
   const validUntil = new Date(chain.session.scope.valid_until).getTime();
-  return Number.isFinite(validUntil) && Date.now() < validUntil;
+  if (!Number.isFinite(validUntil)) return false;
+  const settlementTime = settleAsOf ? new Date(settleAsOf).getTime() : Date.now();
+  if (!Number.isFinite(settlementTime)) return true;
+  return settlementTime < validUntil;
 }
 
-function settlementStatus(chain: ChainState) {
+function settlementStatus(chain: ChainState, settleAsOf = "") {
   if (chain.settlement) return "已结算";
   if (!chain.assembly) return "未结算";
-  if (isSettlementNotDue(chain)) return "尚未到期";
+  if (isSettlementNotDue(chain, settleAsOf)) return "尚未到期";
   return "可结算";
 }
 
