@@ -8,7 +8,7 @@ import pandas_market_calendars as mcal
 
 class MarketTradingCalendar:
     def __init__(self, *, calendar_name: str = "SSE") -> None:
-        self._calendar = mcal.get_calendar(calendar_name)
+        self._calendar = mcal.get_calendar(_calendar_name(calendar_name))
 
     def is_research_time(
         self,
@@ -43,3 +43,10 @@ class MarketTradingCalendar:
     def _is_session(self, value: datetime) -> bool:
         day = value.date().isoformat()
         return bool(self._calendar.valid_days(day, day).size)
+
+
+def _calendar_name(calendar_name: str) -> str:
+    normalized = calendar_name.strip().upper()
+    if normalized in {"SZ", "SZSE", "XSHE"}:
+        return "SSE"
+    return normalized

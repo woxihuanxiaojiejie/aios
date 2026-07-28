@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.interval import IntervalTrigger
+from dotenv import load_dotenv
 
 from aios.api.routes import brain002
 from aios.application.research_runtime import ResearchRuntimeService
@@ -38,6 +39,7 @@ class SchedulerRunOnceResult:
 
 
 def run_research_due_once() -> ResearchSchedulerResult:
+    _load_runtime_env()
     storage = PostgresStorage()
     adapter = AKShareMarketDataAdapter()
     runtime = ResearchRuntimeService(
@@ -59,6 +61,7 @@ def run_research_due_once() -> ResearchSchedulerResult:
 
 
 def run_settlement_due_once() -> SettlementSchedulerResult:
+    _load_runtime_env()
     storage = PostgresStorage()
     return SettlementSchedulerService(
         storage=storage,
@@ -74,6 +77,7 @@ def run_all_due_once() -> SchedulerRunOnceResult:
 
 
 def serve() -> None:
+    _load_runtime_env()
     scheduler = BlockingScheduler(timezone=os.getenv("AIOS_SCHEDULER_TZ", "UTC"))
     scheduler.add_job(
         run_research_due_once,
@@ -119,3 +123,7 @@ def _misfire_grace_time() -> int:
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def _load_runtime_env() -> None:
+    load_dotenv(".env", override=True)

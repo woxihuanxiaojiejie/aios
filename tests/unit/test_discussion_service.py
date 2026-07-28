@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from aios.adapters.llm import LLMStructuredResult
 from aios.application.brain003 import DiscussionService
@@ -99,6 +99,34 @@ def test_discussion_service_repairs_structured_output_without_rediscussing() -> 
     assert outcome.result is not None
     assert "Do not redo the discussion" in llm.calls[1]["system_prompt"]
     assert "original_raw_response" in llm.calls[1]["user_prompt"]
+
+
+def test_discussion_service_repairs_field_info_validation_error() -> None:
+    malformed = LLMStructuredOutputError(
+        "bad json",
+        raw_response='{"discussion_summary":"bad"}',
+        extracted_payload={"discussion_summary": "bad"},
+        validation_error={"discussion_summary": Field(default="bad")},
+        provider="deepseek",
+        model="deepseek/deepseek-v4-pro",
+        latency_ms=3,
+    )
+    llm = FakeLLM([malformed, structured_result(valid_discussion_payload())])
+
+    outcome = DiscussionService(
+        llm=llm,
+        model="deepseek/deepseek-v4-pro",
+        timeout_seconds=5,
+        max_attempts=1,
+    ).discuss(
+        task=analysis_task(),
+        skill_results=brain002_results(),
+        evidence=evidence_items(),
+    )
+
+    assert outcome.execution.status is SkillExecutionStatus.SUCCEEDED
+    assert outcome.execution.retry_count == 1
+    assert outcome.result is not None
 
 
 def test_discussion_service_rejects_missing_skill_result_evidence_reference() -> None:

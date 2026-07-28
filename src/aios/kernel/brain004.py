@@ -127,9 +127,17 @@ class DecisionResultPayload(BaseModel):
     def normalize_common_llm_shapes(cls, value: Any) -> Any:
         if not isinstance(value, dict):
             return value
+        value = dict(value)
+        risks = value.get("risks")
+        if isinstance(risks, list):
+            value["risks"] = [
+                risk
+                for risk in risks
+                if not isinstance(risk, dict)
+                or str(risk.get("invalid_condition") or "").strip()
+            ]
         rejected_directions = value.get("rejected_directions")
         if isinstance(rejected_directions, dict):
-            value = dict(value)
             value["rejected_directions"] = [
                 {
                     "direction": direction,
@@ -139,6 +147,10 @@ class DecisionResultPayload(BaseModel):
                     "evidence_ids": [],
                 }
                 for direction, reason in rejected_directions.items()
+            ]
+        elif isinstance(rejected_directions, list):
+            value["rejected_directions"] = [
+                _traceable_rejection(item) for item in rejected_directions
             ]
         return value
 
@@ -363,4 +375,18 @@ def _decision_text(value: str, *, allow_operational_terms: bool = False) -> str:
     if not allow_operational_terms and FORBIDDEN_OPERATIONAL_RE.search(normalized):
         msg = "decision output must not contain prohibited operational actions"
         raise ValueError(msg)
+    return normalized
+
+
+def _traceable_rejection(value: Any) -> Any:
+    if not isinstance(value, dict):
+        return value
+    if (
+        value.get("skill_ids")
+        or value.get("discussion_refs")
+        or value.get("evidence_ids")
+    ):
+        return value
+    normalized = dict(value)
+    normalized["discussion_refs"] = ["discussion_summary"]
     return normalized

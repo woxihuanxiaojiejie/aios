@@ -129,6 +129,66 @@ def test_decision_payload_normalizes_direction_rejection_map() -> None:
     assert payload.rejected_directions[1].direction is DecisionDirection.BEARISH
 
 
+def test_decision_payload_normalizes_rejection_items_missing_trace_fields() -> None:
+    payload = DecisionResultPayload.model_validate(
+        valid_payload(
+            direction="neutral",
+            action="no_trade",
+            rejected_directions=[
+                {
+                    "direction": "bullish",
+                    "reason": (
+                        "Bullish rejected after discussion_summary because "
+                        "announcement risk offsets trend."
+                    ),
+                },
+                {
+                    "direction": "bearish",
+                    "reason": (
+                        "Bearish rejected after discussion_summary because "
+                        "technical evidence remains constructive."
+                    ),
+                },
+            ],
+        )
+    )
+
+    assert payload.rejected_directions[0].discussion_refs == ("discussion_summary",)
+    assert payload.rejected_directions[1].discussion_refs == ("discussion_summary",)
+
+
+def test_decision_payload_drops_risks_missing_invalid_condition() -> None:
+    payload = DecisionResultPayload.model_validate(
+        valid_payload(
+            risks=[
+                {
+                    "risk": "Announcement risk may dominate price trend.",
+                    "uncertainty": "Follow-up filings are unknown.",
+                    "invalid_condition": "Close below MA20 invalidates the read.",
+                    "evidence_ids": ["ev_announcement"],
+                },
+                {
+                    "risk": "Empty invalid condition from provider output.",
+                    "uncertainty": "Provider omitted a concrete condition.",
+                    "invalid_condition": "",
+                    "evidence_ids": ["ev_announcement"],
+                },
+                {
+                    "risk": "Null invalid condition from provider output.",
+                    "uncertainty": "Provider omitted a concrete condition.",
+                    "invalid_condition": None,
+                    "evidence_ids": ["ev_price"],
+                },
+            ],
+        )
+    )
+
+    assert len(payload.risks) == 1
+    assert payload.risks[0].invalid_condition == (
+        "Close below MA20 invalidates the read."
+    )
+
+
 def test_decision_records_validate_timestamps_and_audit_payloads() -> None:
     started_at = now()
     execution = DecisionExecution(

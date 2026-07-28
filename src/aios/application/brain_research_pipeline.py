@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, time, timedelta
 from typing import Literal, Protocol, cast
+from zoneinfo import ZoneInfo
 
 from aios.adapters.llm import LLMAdapter
 from aios.adapters.market_data import MarketDataAdapter
@@ -65,6 +66,13 @@ class BrainEvidenceRepository(Protocol):
         offset: int = 0,
     ) -> tuple[list[BrainEvidence], int]:
         """Return persisted BRAIN-001 Evidence records."""
+
+
+def _completed_market_date(as_of: datetime) -> date:
+    local = as_of.astimezone(ZoneInfo("Asia/Shanghai"))
+    if local.time() < time(15, 0):
+        return local.date() - timedelta(days=1)
+    return local.date()
 
 
 @dataclass(frozen=True)
@@ -286,13 +294,14 @@ class BrainResearchPipeline:
         return tuple(dict.fromkeys(ids))
 
     def _market_evidence(self, session: ResearchSession) -> tuple[str, ...]:
+        end_date = _completed_market_date(session.scope.as_of)
         result = MarketEvidenceImportService(
             adapter=self._market_data_adapter,
             lifecycle=self._lifecycle,
         ).import_daily_bars(
             session.scope.symbol,
-            session.scope.as_of.date(),
-            session.scope.as_of.date(),
+            end_date - timedelta(days=7),
+            end_date,
             "none",
         )
         return tuple(result.evidence_ids)

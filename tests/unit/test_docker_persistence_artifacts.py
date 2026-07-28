@@ -22,11 +22,26 @@ def test_docker_compose_runs_scheduler_as_independent_service() -> None:
 
     assert "scheduler:" in compose
     assert "uv run aios scheduler serve" in compose
+    assert "scheduler:\n    build:" in compose
+    scheduler_block = compose.split("  scheduler:", maxsplit=1)[1].split(
+        "  frontend:",
+        maxsplit=1,
+    )[0]
+    assert "uv run alembic upgrade head" not in scheduler_block
+    assert "backend:" in scheduler_block
+    assert "condition: service_started" in scheduler_block
     assert "research_due_scan" not in compose
     assert "redis:" not in compose.lower()
     assert "rabbitmq:" not in compose.lower()
     assert "celery" not in compose.lower()
     assert "rq worker" not in compose.lower()
+
+
+def test_backend_dockerfile_installs_runtime_market_data_provider() -> None:
+    dockerfile = (ROOT / "Dockerfile.backend").read_text()
+
+    assert "--extra market-data " in dockerfile
+    assert "--extra market-data-baostock" in dockerfile
 
 
 def test_docker_persistence_script_is_safe_and_repeatable() -> None:

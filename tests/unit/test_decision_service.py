@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from aios.adapters.llm import LLMStructuredResult
 from aios.application.brain004 import DecisionService
@@ -126,6 +126,35 @@ def test_decision_service_repairs_error_payload_with_non_json_values() -> None:
     outcome = DecisionService(
         llm=llm,
         model="deepseek/deepseek-v4-flash",
+        timeout_seconds=5,
+        max_attempts=1,
+    ).decide(
+        task=analysis_task(),
+        skill_results=brain002_results(),
+        discussion_result=discussion_result(brain002_results()),
+        evidence=evidence_items(),
+    )
+
+    assert outcome.execution.status is SkillExecutionStatus.SUCCEEDED
+    assert outcome.execution.retry_count == 1
+    assert outcome.result is not None
+
+
+def test_decision_service_repairs_field_info_validation_error() -> None:
+    malformed = LLMStructuredOutputError(
+        "bad json",
+        raw_response='{"action":"no_trade"}',
+        extracted_payload={"action": "no_trade"},
+        validation_error={"action": Field(default="no_trade")},
+        provider="deepseek",
+        model="deepseek/deepseek-v4-pro",
+        latency_ms=3,
+    )
+    llm = FakeLLM([malformed, structured_result(valid_decision_payload())])
+
+    outcome = DecisionService(
+        llm=llm,
+        model="deepseek/deepseek-v4-pro",
         timeout_seconds=5,
         max_attempts=1,
     ).decide(

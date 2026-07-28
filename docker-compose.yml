@@ -49,11 +49,12 @@ services:
         target: /app/.env
         read_only: true
     command: >
-      sh -c "uv run alembic upgrade head &&
-      uv run aios scheduler serve"
+      sh -c "uv run aios scheduler serve"
     depends_on:
       postgres:
         condition: service_healthy
+      backend:
+        condition: service_started
 
   frontend:
     build:

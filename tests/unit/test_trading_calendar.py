@@ -25,3 +25,13 @@ def test_market_trading_calendar_skips_weekends_and_returns_utc() -> None:
         schedule_time=time(15, 0),
         timezone_name="Asia/Shanghai",
     )
+
+
+def test_market_trading_calendar_accepts_shenzhen_alias() -> None:
+    calendar = MarketTradingCalendar(calendar_name="SZSE")
+
+    assert calendar.is_research_time(
+        as_of=datetime(2026, 7, 27, 7, 0, tzinfo=UTC),
+        schedule_time=time(15, 0),
+        timezone_name="Asia/Shanghai",
+    )

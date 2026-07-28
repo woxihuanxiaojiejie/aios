@@ -390,7 +390,12 @@ class DiscussionService:
                 "Do not redo the discussion. Only repair JSON structure and valid "
                 "references. Return only JSON matching DiscussionResultPayload."
             ),
-            user_prompt=json.dumps(repair_payload, ensure_ascii=True, sort_keys=True),
+            user_prompt=json.dumps(
+                repair_payload,
+                default=str,
+                ensure_ascii=True,
+                sort_keys=True,
+            ),
             prompt_version=prompt.prompt_version,
         )
 

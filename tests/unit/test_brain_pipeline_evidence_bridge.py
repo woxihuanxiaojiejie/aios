@@ -9,7 +9,10 @@ from typing import Any
 from aios.adapters.llm import LLMStructuredResult
 from aios.adapters.market_data import Adjustment, MarketBar
 from aios.application.brain002 import SkillRegistry
-from aios.application.brain_research_pipeline import BrainResearchPipeline
+from aios.application.brain_research_pipeline import (
+    BrainResearchPipeline,
+    _completed_market_date,
+)
 from aios.application.watchlist import WatchlistService
 from aios.integrations.evidence import Evidence as BrainEvidence
 from aios.integrations.provider_records import RSSIntakeRecord
@@ -32,6 +35,9 @@ class FakeBrainEvidenceRepository:
 
 
 class FakeMarketDataAdapter:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, date, date, Adjustment]] = []
+
     def fetch_daily_bars(
         self,
         symbol: str,
@@ -39,6 +45,7 @@ class FakeMarketDataAdapter:
         end_date: date,
         adjustment: Adjustment,
     ) -> list[MarketBar]:
+        self.calls.append((symbol, start_date, end_date, adjustment))
         return [
             MarketBar(
                 symbol=symbol,
@@ -183,14 +190,24 @@ def test_brain_pipeline_uses_bridged_core_evidence() -> None:
     )
     registry = SkillRegistry()
     registry.register(_technical_definition())
+    market_adapter = FakeMarketDataAdapter()
 
     result = BrainResearchPipeline(
         lifecycle=DecisionLifecycleService(storage),
-        market_data_adapter=FakeMarketDataAdapter(),
+        market_data_adapter=market_adapter,
         llm_adapter=FakeLLMAdapter(),
         brain002_registry=registry,
         brain_evidence_repository=FakeBrainEvidenceRepository(legacy),
     ).run(session=research_session, model="fake-model", provider="fake")
+
+    assert market_adapter.calls == [
+        (
+            "600519",
+            research_session.scope.as_of.date() - timedelta(days=7),
+            research_session.scope.as_of.date(),
+            Adjustment.NONE,
+        )
+    ]
 
     bridged = CoreEvidenceBridge(storage).find_by_legacy_brain_evidence_id(
         str(legacy.evidence_id)
@@ -220,6 +237,19 @@ def test_brain_pipeline_uses_bridged_core_evidence() -> None:
         "trade_plan_ready",
     ]
     assert "waiting_execution" not in states
+
+
+def test_completed_market_date_uses_previous_date_before_cn_close() -> None:
+    assert _completed_market_date(datetime(2026, 7, 28, 4, 0, tzinfo=UTC)) == date(
+        2026,
+        7,
+        27,
+    )
+    assert _completed_market_date(datetime(2026, 7, 28, 8, 0, tzinfo=UTC)) == date(
+        2026,
+        7,
+        28,
+    )
 
 
 def _technical_definition() -> SkillDefinition:
