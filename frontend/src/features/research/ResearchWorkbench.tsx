@@ -54,7 +54,11 @@ const nowIso = () => new Date().toISOString();
 const inHoursIso = (hours: number) =>
   new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
 
-export function ResearchWorkbench() {
+export function ResearchWorkbench({
+  onRunCreated,
+}: {
+  onRunCreated?: (runId: string) => void;
+} = {}) {
   const queryClient = useQueryClient();
   const [chain, setChain] = useState<ChainState>({});
   const [operation, setOperation] = useState<OperationState>(null);
@@ -114,6 +118,7 @@ export function ResearchWorkbench() {
     setError,
     setEvidenceHash,
     setOperation,
+    onRunCreated,
     invalidate: () =>
       queryClient.invalidateQueries({
         predicate: (query) =>
@@ -638,6 +643,7 @@ function useLifecycleMutations({
   setError,
   setEvidenceHash,
   setOperation,
+  onRunCreated,
   invalidate,
 }: {
   chain: ChainState;
@@ -645,6 +651,7 @@ function useLifecycleMutations({
   setError: (error: string | null) => void;
   setEvidenceHash: (hash: string) => void;
   setOperation: (operation: OperationState) => void;
+  onRunCreated?: (runId: string) => void;
   invalidate: () => Promise<unknown>;
 }) {
   return {
@@ -677,7 +684,9 @@ function useLifecycleMutations({
       "手动运行研究",
       "research",
       () => researchApi.runWatchlist(chain.watchlist!.watchlist_item_id),
-      () => undefined,
+      (result) => {
+        if (result.run.run_id) onRunCreated?.(result.run.run_id);
+      },
       setError,
       setOperation,
       invalidate,

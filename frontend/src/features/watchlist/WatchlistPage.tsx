@@ -15,6 +15,7 @@ import {
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { ApiError } from "../../infrastructure/api/client";
 import { useWatchlist, useWatchlistMutations } from "./hooks";
@@ -30,6 +31,7 @@ type EditState = {
 };
 
 export function WatchlistPage() {
+  const navigate = useNavigate();
   const [status, setStatus] = useState<WatchlistStatus>("active");
   const [edit, setEdit] = useState<EditState | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -180,7 +182,18 @@ export function WatchlistPage() {
   async function runAction(action: () => Promise<unknown>) {
     setError(null);
     try {
-      await action();
+      const result = await action();
+      if (
+        result &&
+        typeof result === "object" &&
+        "run" in result &&
+        result.run &&
+        typeof result.run === "object" &&
+        "run_id" in result.run &&
+        typeof result.run.run_id === "string"
+      ) {
+        navigate(`/research/${encodeURIComponent(result.run.run_id)}`);
+      }
     } catch (caught) {
       setError(errorMessage(caught));
     }

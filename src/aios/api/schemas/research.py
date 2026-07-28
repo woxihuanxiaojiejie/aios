@@ -6,14 +6,24 @@ from decimal import Decimal
 from pydantic import Field, field_validator
 
 from aios.api.schemas.common import ApiSchema, require_timezone
+from aios.api.schemas.debate import (
+    DebateResponse,
+    DebateStatementResponse,
+    DecisionAssemblyResponse,
+    DecisionProposalResponse,
+    RiskReviewResponse,
+)
 from aios.api.schemas.decision import DecisionResponse
 from aios.api.schemas.decision_generation import GenerationMetadataResponse
 from aios.api.schemas.evidence import EvidenceResponse
 from aios.api.schemas.experiment import ExperimentResponse
 from aios.api.schemas.learning import LearningResponse, learning_response
 from aios.api.schemas.market_data import MarketBarResponse
+from aios.api.schemas.research_records import AgentReportResponse, HypothesisResponse
 from aios.api.schemas.research_run import ResearchRunResponse
+from aios.api.schemas.research_session import ResearchSessionResponse
 from aios.api.schemas.review import ReviewResponse
+from aios.api.schemas.watchlist import WatchlistItemResponse
 from aios.kernel.enums import (
     DecisionDirection,
     DirectionalResult,
@@ -196,6 +206,41 @@ class RuntimeResearchResponse(ApiSchema):
     run: ResearchRunResponse
     trade_plan: TradePlanResponse | None = None
     simulated_execution: SimulatedExecutionResponse | None = None
+
+
+class ResearchRunListItemResponse(ResearchRunResponse):
+    market: str | None = None
+    trigger_method: str | None = None
+    final_decision: str | None = None
+    confidence: float | None = None
+
+
+class ResearchRunListResponse(ApiSchema):
+    items: list[ResearchRunListItemResponse]
+    total: int
+    limit: int
+    offset: int
+    count: int
+
+
+class ResearchRunDiscussionResponse(ApiSchema):
+    debates: list[DebateResponse]
+    statements: list[DebateStatementResponse]
+    proposal: DecisionProposalResponse | None = None
+    risk_review: RiskReviewResponse | None = None
+    assembly: DecisionAssemblyResponse | None = None
+
+
+class ResearchRunDetailResponse(ApiSchema):
+    run: ResearchRunResponse
+    watchlist_item: WatchlistItemResponse | None = None
+    session: ResearchSessionResponse | None = None
+    evidence: list[EvidenceResponse]
+    skill_reports: list[AgentReportResponse]
+    hypotheses: list[HypothesisResponse]
+    discussion: ResearchRunDiscussionResponse
+    decision: DecisionResponse | None = None
+    trade_plan: TradePlanResponse | None = None
 
 
 class SchedulerErrorResponse(ApiSchema):

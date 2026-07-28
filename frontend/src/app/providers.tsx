@@ -40,6 +40,12 @@ export function AppProviders({ children }: { children: ReactNode }) {
                 create: "/watchlist",
                 edit: "/watchlist",
               },
+              {
+                name: "research-runs",
+                list: "/research",
+                show: "/research/:runId",
+                create: "/research/new",
+              },
             ]}
             options={{ syncWithLocation: false }}
           >

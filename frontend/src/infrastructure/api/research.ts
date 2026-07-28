@@ -49,6 +49,20 @@ export type Evidence = {
   reliability: number;
   content_hash: string;
   metadata: Record<string, unknown>;
+  title: string | null;
+  raw_content: string | null;
+  raw_response: Record<string, unknown> | null;
+  source_type: string | null;
+  source_identifier: string | null;
+  source_url: string | null;
+  collected_at: string | null;
+  entities: Record<string, unknown>;
+  fingerprint: string | null;
+  credibility: number | null;
+  freshness: string | null;
+  processing_status: string;
+  parse_error: string | null;
+  legacy_brain_evidence_id: string | null;
   created_at: string;
 };
 
@@ -93,6 +107,10 @@ export type ResearchRun = {
   research_window_key: string | null;
   current_stage: string;
   status: string;
+  vibe_run_id: string | null;
+  workflow: string;
+  input_params: Record<string, unknown>;
+  raw_output_reference: string | null;
   failed_stage: string | null;
   error_type: string | null;
   error: string | null;
@@ -190,11 +208,22 @@ export type DecisionProposal = {
 
 export type RiskReview = {
   risk_review_id: string;
-  proposal_id: string;
+  proposal_id: string | null;
   verdict: string;
   final_conclusion: string;
   final_confidence: number;
   reasons: string[];
+  confidence_delta: number | null;
+  adjusted_position: number | null;
+  condition_changes: string[];
+  converted_to_no_trade: boolean;
+  research_session_id: string | null;
+  decision_result_id: string | null;
+  discussion_result_id: string | null;
+  skill_result_ids: string[];
+  evidence_ids: string[];
+  supporting_arguments: string[];
+  opposing_arguments: string[];
   created_at: string;
 };
 
@@ -234,13 +263,31 @@ export type Decision = {
   action: string;
   horizon: string;
   confidence: number;
-  expected_return: number;
-  max_expected_loss: number;
+  expected_return: number | null;
+  max_expected_loss: number | null;
   evidence_ids: string[];
   reasoning_summary: string;
+  entry_conditions: string[];
+  invalidation_conditions: string[];
+  risk_factors: string[];
   status: string;
   created_at: string;
   valid_until: string;
+  research_session_id: string | null;
+  decision_result_id: string | null;
+  risk_review_id: string | null;
+  direction: string | null;
+  original_direction: string | null;
+  target_range: [number, number] | null;
+  stop_loss: number | null;
+  position_suggestion: number | null;
+  supporting_skill_ids: string[];
+  dissenting_opinions: string[];
+  market_regime: string | null;
+  generated_at: string | null;
+  planned_settlement_at: string | null;
+  unavailable_fields: string[];
+  downgrade_reasons: string[];
 };
 
 export type Generation = {
@@ -267,10 +314,20 @@ export type TradePlan = {
   symbol: string;
   direction: string;
   status: string;
+  planned_entry: string[];
+  entry_conditions: string[];
+  target: [number, number] | null;
+  stop_loss: number | null;
+  invalidation_conditions: string[];
+  planned_position: number | null;
   horizon: string;
   expiry: string;
+  fee_model: Record<string, unknown>;
+  slippage_model: Record<string, unknown>;
   no_trade_reasons: string[];
   unavailable_fields: string[];
+  created_at: string;
+  updated_at: string;
 };
 
 export type SimulatedExecution = {

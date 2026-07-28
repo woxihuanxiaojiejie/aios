@@ -24,8 +24,16 @@ describe("App routing", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps the existing ResearchWorkbench available at /research", async () => {
+  it("serves the Research Runs list at /research", async () => {
     window.history.pushState({}, "", "/research");
+
+    render(<App />);
+
+    expect(await screen.findByText("Research Runs")).toBeInTheDocument();
+  });
+
+  it("keeps the existing ResearchWorkbench available at /research/new", async () => {
+    window.history.pushState({}, "", "/research/new");
 
     render(<App />);
 
@@ -39,6 +47,9 @@ async function apiResponse(input: RequestInfo | URL) {
   const url = String(input);
   if (url.endsWith("/research/watchlist")) {
     return json({ items: [], total: 0, limit: 50, offset: 0 });
+  }
+  if (url.includes("/research/runs")) {
+    return json({ items: [], total: 0, limit: 10, offset: 0, count: 0 });
   }
   if (url.endsWith("/evidence") || url.endsWith("/research/sessions")) {
     return json({ items: [], total: 0, limit: 50, offset: 0 });

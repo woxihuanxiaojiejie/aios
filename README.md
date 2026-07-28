@@ -144,6 +144,11 @@ PATCH /api/v1/research/watchlist/{item_id}
 POST /api/v1/research/watchlist/{item_id}/archive
 POST /api/v1/research/watchlist/{item_id}/restore
 POST /api/v1/research/watchlist/{item_id}/run
+GET  /api/v1/research/runs
+POST /api/v1/research/runs
+GET  /api/v1/research/runs/{run_id}
+GET  /api/v1/research/runs/{run_id}/detail
+POST /api/v1/research/runs/{run_id}/resume
 POST /api/v1/research/scheduler/run-once
 POST /api/v1/research/settlement/run-once
 GET  /api/v1/research/market
@@ -169,6 +174,25 @@ uv run aios settlement run-once
 
 List endpoints support `limit` and `offset`. `limit` defaults to 50 and is capped
 at 200.
+
+### Research Frontend
+
+The frontend research center provides:
+
+```text
+/research        persisted Research Run list
+/research/new    existing manual ResearchWorkbench
+/research/:runId persisted Research Run detail through Trade Plan
+```
+
+The list uses the existing Refine data provider and supports backend-backed
+pagination plus symbol, market, status, workflow, date, and sort query fields
+where the API can satisfy them. The detail page reads
+`GET /api/v1/research/runs/{run_id}/detail` and displays persisted Run,
+Evidence, Skill Reports, Hypothesis, Discussion, Decision, and Trade Plan data.
+
+Watchlist manual run results route to `/research/:runId` using the real
+`run.run_id` returned by the backend.
 
 ### AKShare Market Data
 

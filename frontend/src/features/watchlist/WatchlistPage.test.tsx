@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { App as AntdApp } from "antd";
+import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WatchlistPage } from "./WatchlistPage";
@@ -142,6 +143,21 @@ describe("WatchlistPage", () => {
     expect(create).toBeDisabled();
     delayCreate = false;
   });
+
+  it("navigates to the real Research Run after manual run succeeds", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const row = (await screen.findByText("600519")).closest("tr");
+    expect(row).not.toBeNull();
+    await user.click(
+      within(row as HTMLTableRowElement).getByRole("button", {
+        name: "Run research",
+      }),
+    );
+
+    expect(await screen.findByTestId("run-route")).toHaveTextContent("run_watchlist");
+  });
 });
 
 function renderPage() {
@@ -151,10 +167,20 @@ function renderPage() {
   render(
     <QueryClientProvider client={queryClient}>
       <AntdApp>
-        <WatchlistPage />
+        <MemoryRouter initialEntries={["/watchlist"]}>
+          <Routes>
+            <Route path="/watchlist" element={<WatchlistPage />} />
+            <Route path="/research/:runId" element={<RunRoute />} />
+          </Routes>
+        </MemoryRouter>
       </AntdApp>
     </QueryClientProvider>,
   );
+}
+
+function RunRoute() {
+  const { runId } = useParams();
+  return <span data-testid="run-route">{runId}</span>;
 }
 
 async function apiResponse(input: RequestInfo | URL, init?: RequestInit) {
@@ -226,6 +252,31 @@ async function apiResponse(input: RequestInfo | URL, init?: RequestInit) {
         : item,
     );
     return json(items.find((item) => item.watchlist_item_id === "wl_new"));
+  }
+  if (method === "POST" && url.endsWith("/research/watchlist/wl_existing/run")) {
+    return json({
+      run: {
+        run_id: "run_watchlist",
+        research_session_id: "rs_watchlist",
+        watchlist_item_id: "wl_existing",
+        symbol: "600519",
+        research_window_key: "600519:2026-07-28:3",
+        current_stage: "session",
+        status: "running",
+        vibe_run_id: null,
+        workflow: "investment_committee",
+        input_params: {},
+        raw_output_reference: null,
+        failed_stage: null,
+        error_type: null,
+        error: null,
+        finished_at: null,
+        created_at: "2026-07-28T00:00:00Z",
+        updated_at: "2026-07-28T00:00:00Z",
+      },
+      trade_plan: null,
+      simulated_execution: null,
+    });
   }
   return json({});
 }

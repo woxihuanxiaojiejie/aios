@@ -1,4 +1,5 @@
 import { apiClient } from "../../infrastructure/api/client";
+import type { RuntimeResearchResponse } from "../../infrastructure/api/research";
 import type {
   WatchlistCreateInput,
   WatchlistItem,
@@ -38,7 +39,7 @@ export const watchlistApi = {
     );
   },
   run(itemId: string) {
-    return apiClient.post(
+    return apiClient.post<RuntimeResearchResponse>(
       `/research/watchlist/${encodeURIComponent(itemId)}/run`,
     );
   },

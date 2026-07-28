@@ -9,12 +9,13 @@ import { apiClient, type ApiClient } from "../api/client";
 
 type ListResponse<T> = {
   items: T[];
-  total: number;
+  total?: number;
+  count?: number;
 };
 
 export const aiosDataProvider = createAiosDataProvider(apiClient);
 
-export function createAiosDataProvider(client: ApiClient): DataProvider {
+export function createAiosDataProvider(client: ApiClient = apiClient): DataProvider {
   return {
     getList: async <TData extends BaseRecord = BaseRecord>(
       params: GetListParams,
@@ -23,7 +24,7 @@ export function createAiosDataProvider(client: ApiClient): DataProvider {
       const response = await client.get<ListResponse<TData>>(path);
       return {
         data: response.items,
-        total: response.total,
+        total: response.total ?? response.count ?? response.items.length,
       };
     },
     getOne: async ({ resource, id }) => ({
@@ -64,7 +65,10 @@ export function createAiosDataProvider(client: ApiClient): DataProvider {
 function listPath(params: GetListParams) {
   const url = new URL(collectionPath(params.resource), "http://aios.local");
   const pageSize = params.pagination?.pageSize ?? 50;
-  const current = params.pagination?.currentPage ?? 1;
+  const current =
+    params.pagination && "current" in params.pagination
+      ? Number(params.pagination.current)
+      : params.pagination?.currentPage ?? 1;
   url.searchParams.set("limit", String(pageSize));
   url.searchParams.set("offset", String((current - 1) * pageSize));
   for (const filter of params.filters ?? []) {
@@ -77,6 +81,7 @@ function listPath(params: GetListParams) {
 
 function collectionPath(resource: string) {
   if (resource === "watchlist") return "/research/watchlist";
+  if (resource === "research-runs") return "/research/runs";
   throw new Error(`Unsupported Refine resource: ${resource}`);
 }
 

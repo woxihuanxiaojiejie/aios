@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable
 from datetime import UTC, date, datetime, timedelta
+from typing import Annotated
 
 from fastapi import APIRouter, Query, Response, status
 
@@ -50,6 +52,10 @@ from aios.api.schemas.research import (
     ResearchHistoryResponse,
     ResearchHistoryRow,
     ResearchMarketResponse,
+    ResearchRunDetailResponse,
+    ResearchRunDiscussionResponse,
+    ResearchRunListItemResponse,
+    ResearchRunListResponse,
     ResearchSchedulerRunOnceResponse,
     ResearchSettlementRequest,
     ResearchSettlementResponse,
@@ -112,6 +118,8 @@ from aios.application.simulated_execution import SimulatedExecutionService
 from aios.application.trade_plan import TradePlanService
 from aios.application.watchlist import WatchlistService
 from aios.integrations.trading_calendar import MarketTradingCalendar
+from aios.kernel.base import KernelModel
+from aios.kernel.debate import DebateStatement
 from aios.kernel.decision import Decision
 from aios.kernel.enums import (
     AgentReportStatus,
@@ -120,14 +128,16 @@ from aios.kernel.enums import (
     ResearchSessionStatus,
     WatchlistStatus,
 )
-from aios.kernel.errors import EvaluationConfigurationError
+from aios.kernel.errors import EvaluationConfigurationError, MissingEntityError
 from aios.kernel.evidence import Evidence
 from aios.kernel.execution import SimulatedExecution
 from aios.kernel.experiment import Experiment
+from aios.kernel.research import ResearchSession
 from aios.kernel.research_run import ResearchRun
 from aios.kernel.review import Review
 from aios.kernel.settlement import DecisionOutcome
 from aios.kernel.trade_plan import TradePlan
+from aios.kernel.watchlist import WatchlistItem
 from aios.workflows.decision_lifecycle import DecisionLifecycleService
 
 router = APIRouter(prefix="/research", tags=["research"])
@@ -166,6 +176,100 @@ def run_research(
         brain_evidence_repository=brain_evidence_repository,
     ).run_research(**request.model_dump())
     return research_run_response(run)
+
+
+@router.get("/runs", response_model=ResearchRunListResponse)
+def list_research_runs(
+    lifecycle: LifecycleDep,
+    watchlist_item_id: Annotated[str | None, Query(min_length=1)] = None,
+    status_filter: Annotated[str | None, Query(alias="status")] = None,
+    symbol: Annotated[str | None, Query(min_length=1)] = None,
+    market: Annotated[str | None, Query(min_length=1)] = None,
+    workflow: Annotated[str | None, Query(min_length=1)] = None,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
+    sort: str = "-created_at",
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> ResearchRunListResponse:
+    runs = lifecycle.storage.list_research_runs(
+        watchlist_item_id=watchlist_item_id,
+        status=status_filter,
+    )
+    rows = [
+        _research_run_list_item(lifecycle, run)
+        for run in runs
+        if _run_matches(
+            run=run,
+            lifecycle=lifecycle,
+            symbol=symbol,
+            market=market,
+            workflow=workflow,
+            created_from=created_from,
+            created_to=created_to,
+        )
+    ]
+    rows = _sort_run_rows(rows, sort)
+    return ResearchRunListResponse(
+        items=rows[offset : offset + limit],
+        total=len(rows),
+        limit=limit,
+        offset=offset,
+        count=len(rows[offset : offset + limit]),
+    )
+
+
+@router.get("/runs/{run_id}/detail", response_model=ResearchRunDetailResponse)
+def get_research_run_detail(
+    run_id: str,
+    lifecycle: LifecycleDep,
+) -> ResearchRunDetailResponse:
+    run = lifecycle.storage.get(ResearchRun, run_id)
+    watchlist_item = _optional_get(
+        lifecycle,
+        WatchlistItem,
+        run.watchlist_item_id,
+    )
+    session = (
+        _optional_get(lifecycle, ResearchSession, run.research_session_id)
+        if run.research_session_id
+        else None
+    )
+    evidence = _detail_evidence(lifecycle, session)
+    reports = (
+        lifecycle.storage.list_agent_reports(
+            research_session_id=session.research_session_id
+        )
+        if session
+        else []
+    )
+    hypotheses = (
+        lifecycle.storage.list_hypotheses(
+            research_session_id=session.research_session_id
+        )
+        if session
+        else []
+    )
+    discussion = _detail_discussion(lifecycle, session)
+    decision = _detail_decision(lifecycle, session)
+    trade_plan = (
+        lifecycle.storage.get_trade_plan_by_decision_id(decision.decision_id)
+        if decision
+        else None
+    )
+    return ResearchRunDetailResponse(
+        run=research_run_response(run),
+        watchlist_item=(
+            watchlist_item_response(watchlist_item) if watchlist_item else None
+        ),
+        session=research_session_response(session) if session else None,
+        evidence=[evidence_response(item) for item in evidence],
+        skill_reports=[agent_report_response(report) for report in reports],
+        hypotheses=[hypothesis_response(hypothesis) for hypothesis in hypotheses],
+        discussion=discussion,
+        decision=decision_response(decision) if decision else None,
+        trade_plan=trade_plan_response(trade_plan) if trade_plan else None,
+    )
 
 
 @router.get("/runs/{run_id}", response_model=ResearchRunResponse)
@@ -950,6 +1054,163 @@ def research_history(
         latest_review=review_response(reviews[-1]) if reviews else None,
         rows=rows,
     )
+
+
+def _research_run_list_item(
+    lifecycle: DecisionLifecycleService,
+    run: ResearchRun,
+) -> ResearchRunListItemResponse:
+    watchlist_item = _optional_get(lifecycle, WatchlistItem, run.watchlist_item_id)
+    decision = _run_decision(lifecycle, run)
+    return ResearchRunListItemResponse(
+        **research_run_response(run).model_dump(),
+        market=watchlist_item.market if watchlist_item else None,
+        trigger_method=str(run.input_params.get("trigger_method") or run.workflow),
+        final_decision=decision.action.value if decision else None,
+        confidence=decision.confidence if decision else None,
+    )
+
+
+def _run_matches(
+    *,
+    run: ResearchRun,
+    lifecycle: DecisionLifecycleService,
+    symbol: str | None,
+    market: str | None,
+    workflow: str | None,
+    created_from: datetime | None,
+    created_to: datetime | None,
+) -> bool:
+    if symbol is not None and run.symbol != symbol:
+        return False
+    if workflow is not None and run.workflow != workflow:
+        return False
+    if created_from is not None and run.created_at < created_from:
+        return False
+    if created_to is not None and run.created_at > created_to:
+        return False
+    if market is None:
+        return True
+    watchlist_item = _optional_get(lifecycle, WatchlistItem, run.watchlist_item_id)
+    return watchlist_item is not None and watchlist_item.market == market
+
+
+def _sort_run_rows(
+    rows: list[ResearchRunListItemResponse],
+    sort: str,
+) -> list[ResearchRunListItemResponse]:
+    descending = sort.startswith("-")
+    field = sort.removeprefix("-")
+    if field not in {"created_at", "updated_at", "finished_at", "status", "symbol"}:
+        field = "created_at"
+        descending = True
+    return sorted(
+        rows,
+        key=lambda row: (getattr(row, field) is None, getattr(row, field), row.run_id),
+        reverse=descending,
+    )
+
+
+def _detail_evidence(
+    lifecycle: DecisionLifecycleService,
+    session: ResearchSession | None,
+) -> list[Evidence]:
+    if session is None:
+        return []
+    by_id = {item.evidence_id: item for item in lifecycle.list_entities(Evidence)}
+    return [
+        by_id[evidence_id]
+        for evidence_id in session.evidence_ids
+        if evidence_id in by_id
+    ]
+
+
+def _detail_discussion(
+    lifecycle: DecisionLifecycleService,
+    session: ResearchSession | None,
+) -> ResearchRunDiscussionResponse:
+    if session is None:
+        return ResearchRunDiscussionResponse(
+            debates=[],
+            statements=[],
+            proposal=None,
+            risk_review=None,
+            assembly=None,
+        )
+    debates = lifecycle.storage.list_debates(
+        research_session_id=session.research_session_id
+    )
+    debate_ids = {debate.debate_id for debate in debates}
+    statements = [
+        statement
+        for statement in lifecycle.list_entities(DebateStatement)
+        if statement.debate_id in debate_ids
+    ]
+    proposal = _first_not_none(
+        lifecycle.storage.get_decision_proposal_by_debate_id(debate.debate_id)
+        for debate in reversed(debates)
+    )
+    risk_review = (
+        lifecycle.storage.get_risk_review_by_proposal_id(proposal.proposal_id)
+        if proposal
+        else None
+    )
+    assembly = (
+        lifecycle.storage.get_decision_assembly_by_proposal_id(proposal.proposal_id)
+        if proposal
+        else None
+    )
+    return ResearchRunDiscussionResponse(
+        debates=[debate_response(debate) for debate in debates],
+        statements=[debate_statement_response(statement) for statement in statements],
+        proposal=decision_proposal_response(proposal) if proposal else None,
+        risk_review=risk_review_response(risk_review) if risk_review else None,
+        assembly=decision_assembly_response(assembly) if assembly else None,
+    )
+
+
+def _detail_decision(
+    lifecycle: DecisionLifecycleService,
+    session: ResearchSession | None,
+) -> Decision | None:
+    if session is None:
+        return None
+    decisions = [
+        decision
+        for decision in lifecycle.list_entities(Decision)
+        if decision.research_session_id == session.research_session_id
+    ]
+    return decisions[-1] if decisions else None
+
+
+def _run_decision(
+    lifecycle: DecisionLifecycleService,
+    run: ResearchRun,
+) -> Decision | None:
+    if run.research_session_id is None:
+        return None
+    return _detail_decision(
+        lifecycle,
+        _optional_get(lifecycle, ResearchSession, run.research_session_id),
+    )
+
+
+def _optional_get[TEntity: KernelModel](
+    lifecycle: DecisionLifecycleService,
+    entity_type: type[TEntity],
+    entity_id: str,
+) -> TEntity | None:
+    try:
+        return lifecycle.storage.get(entity_type, entity_id)
+    except MissingEntityError:
+        return None
+
+
+def _first_not_none[TEntity](items: Iterable[TEntity | None]) -> TEntity | None:
+    for item in items:
+        if item is not None:
+            return item
+    return None
 
 
 def _history_rows(
