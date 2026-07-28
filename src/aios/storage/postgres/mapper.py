@@ -75,6 +75,11 @@ from aios.kernel.research import ResearchScope, ResearchSession, ResearchTransit
 from aios.kernel.research_records import AgentReport, Hypothesis
 from aios.kernel.research_run import ResearchRun, ResearchRunStage, ResearchRunStatus
 from aios.kernel.review import Review
+from aios.kernel.scheduler_runtime import (
+    SchedulerJobRun,
+    SchedulerJobStatus,
+    SchedulerRuntime,
+)
 from aios.kernel.settlement import (
     DecisionEvaluation,
     DecisionOutcome,
@@ -109,6 +114,8 @@ from aios.storage.postgres.models import (
     ResearchSettlementRecordModel,
     ReviewRecord,
     RiskReviewRecord,
+    SchedulerJobRunRecord,
+    SchedulerRuntimeRecord,
     SimulatedExecutionRecord,
     SkillDefinitionRecord,
     SkillExecutionRecord,
@@ -139,6 +146,8 @@ type Record = (
     | DecisionAssemblyRecordModel
     | ResearchSettlementRecordModel
     | ResearchRunRecord
+    | SchedulerRuntimeRecord
+    | SchedulerJobRunRecord
     | SkillDefinitionRecord
     | AnalysisTaskRecord
     | SkillExecutionRecord
@@ -508,6 +517,28 @@ def to_model(entity: KernelModel) -> Record:
             report_ids=list(entity.report_ids),
             hypothesis_ids=list(entity.hypothesis_ids),
             settled_at=entity.settled_at,
+            created_at=entity.created_at,
+        )
+    if isinstance(entity, SchedulerRuntime):
+        return SchedulerRuntimeRecord(
+            scheduler_instance_id=entity.scheduler_instance_id,
+            started_at=entity.started_at,
+            last_heartbeat_at=entity.last_heartbeat_at,
+            updated_at=entity.updated_at,
+        )
+    if isinstance(entity, SchedulerJobRun):
+        return SchedulerJobRunRecord(
+            job_run_id=entity.job_run_id,
+            job_id=entity.job_id,
+            status=entity.status,
+            started_at=entity.started_at,
+            completed_at=entity.completed_at,
+            processed_count=entity.processed_count,
+            success_count=entity.success_count,
+            failure_count=entity.failure_count,
+            result_message=entity.result_message,
+            error_type=entity.error_type,
+            error_message=entity.error_message,
             created_at=entity.created_at,
         )
     if isinstance(entity, Review):
@@ -1113,6 +1144,28 @@ def model_to_entity(model: DeclarativeBase) -> KernelModel:
             settled_at=_utc(model.settled_at),
             created_at=_utc(model.created_at),
         )
+    if isinstance(model, SchedulerRuntimeRecord):
+        return SchedulerRuntime(
+            scheduler_instance_id=model.scheduler_instance_id,
+            started_at=_utc(model.started_at),
+            last_heartbeat_at=_utc(model.last_heartbeat_at),
+            updated_at=_utc(model.updated_at),
+        )
+    if isinstance(model, SchedulerJobRunRecord):
+        return SchedulerJobRun(
+            job_run_id=model.job_run_id,
+            job_id=model.job_id,
+            status=cast("SchedulerJobStatus", model.status),
+            started_at=_utc(model.started_at),
+            completed_at=_utc(model.completed_at),
+            processed_count=model.processed_count,
+            success_count=model.success_count,
+            failure_count=model.failure_count,
+            result_message=model.result_message,
+            error_type=model.error_type,
+            error_message=model.error_message,
+            created_at=_utc(model.created_at),
+        )
     if isinstance(model, ReviewRecord):
         return Review(
             review_id=model.review_id,
@@ -1348,6 +1401,10 @@ def model_for_entity_type(entity_type: type[KernelModel]) -> type[Record]:
         return DecisionEvaluationRecord
     if entity_type is ResearchSettlementRecord:
         return ResearchSettlementRecordModel
+    if entity_type is SchedulerRuntime:
+        return SchedulerRuntimeRecord
+    if entity_type is SchedulerJobRun:
+        return SchedulerJobRunRecord
     if entity_type is Review:
         return ReviewRecord
     if entity_type is Learning:
@@ -1409,6 +1466,10 @@ def id_column_for_model(model_type: type[Record]) -> Any:
         return DecisionEvaluationRecord.evaluation_id
     if model_type is ResearchSettlementRecordModel:
         return ResearchSettlementRecordModel.research_settlement_id
+    if model_type is SchedulerRuntimeRecord:
+        return SchedulerRuntimeRecord.scheduler_instance_id
+    if model_type is SchedulerJobRunRecord:
+        return SchedulerJobRunRecord.job_run_id
     if model_type is ReviewRecord:
         return ReviewRecord.review_id
     if model_type is LearningRecord:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from datetime import UTC, datetime
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -25,6 +26,7 @@ from aios.api.routes import (
     market_data,
     research,
     reviews,
+    system,
 )
 from aios.application.decision_generation import GenerationRecorder
 from aios.integrations.akshare.adapter import AKShareMarketDataAdapter
@@ -50,6 +52,7 @@ def create_app(
     load_dotenv(override=True)
 
     app = FastAPI(title="AIOS", version="0.1.0")
+    app.state.started_at = datetime.now(UTC)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_cors_origins(),
@@ -80,6 +83,7 @@ def create_app(
     app.include_router(brain_evidence.router, prefix="/api/v1")
     app.include_router(brain002.router, prefix="/api/v1")
     app.include_router(dashboard.router, prefix="/api/v1")
+    app.include_router(system.router, prefix="/api/v1")
     app.include_router(experiments.router, prefix="/api/v1")
     app.include_router(decisions.router, prefix="/api/v1")
     app.include_router(reviews.router, prefix="/api/v1")

@@ -54,3 +54,20 @@ ExecutionSettlementExplorer detail model.
 | Research Run detail page | `frontend/src/features/research/pages/ResearchRunDetailPage.tsx` | unchanged | repository code | expanded in place | added missing Evidence, Skill Report, Hypothesis, Discussion, Decision, Trade Plan fields | reused |
 | Ant Design components | npm package `antd` | direct imports | MIT | npm dependency reuse | no source copied | reused |
 | Chart dependencies | `echarts`, `lightweight-charts` | removed | upstream package licenses | no runtime reuse | removed unused isolated chart dependencies and unused `CandlestickChart.tsx` | removed |
+
+## System Runtime Status
+
+This milestone copied no external source files and introduced no charting,
+monitoring, logging, provider editing, or service-control UI dependencies. It
+reused the existing React Router lazy-route pattern, API client, ApiError
+handling, Ant Design, TanStack Query, and shared loading/error/time display
+helpers.
+
+| Component | Original Location | New Location | License | Reuse Method | Modifications | Status |
+| -- | ---- | --- | --- | ---- | ---- | -- |
+| API client and ApiError | `frontend/src/infrastructure/api/client.ts` | unchanged | repository code | direct reuse | added System feature API wrapper only | reused |
+| React Router app shell | `frontend/src/app/App.tsx` | unchanged | repository code | extended existing lazy route pattern | added `/system`; `/` still redirects to `/dashboard` | reused |
+| Application navigation | `frontend/src/app/layout.tsx` | unchanged | repository code | extended existing Ant Design Menu | appended System after Learning Proposals | reused |
+| Loading, empty, error, time display | `frontend/src/shared/researchDisplay.tsx` | unchanged | repository code | direct reuse | none | reused |
+| Ant Design components | npm package `antd` | direct imports | MIT | npm dependency reuse | no source copied | reused |
+| TanStack Query | npm package `@tanstack/react-query` | direct imports | MIT | npm dependency reuse | no source copied | reused |

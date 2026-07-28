@@ -114,6 +114,17 @@ export AIOS_SCHEDULER_TZ=UTC
 
 Stop safely with `Ctrl+C` or `SIGTERM`.
 
+While running, `uv run aios scheduler serve` writes a minimal heartbeat to
+PostgreSQL and records safe summaries for the two fixed jobs. The read-only
+`GET /api/v1/system/status` endpoint reports scheduler `healthy` when the last
+heartbeat is no older than three times the largest configured scan or misfire
+interval. If the heartbeat is older, scheduler status is `unavailable`; if no
+heartbeat has ever been recorded, status is `unknown`.
+
+Provider status on `/system` uses local configuration validation only. It does
+not call external LLM providers and never returns API keys, tokens, database
+URLs, authorization headers, or raw provider responses.
+
 ## Frontend
 
 Run local dev server:

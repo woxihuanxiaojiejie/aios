@@ -5,7 +5,7 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Any, cast
 
-from sqlalchemy import Engine, select
+from sqlalchemy import Engine, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -35,6 +35,7 @@ from aios.kernel.research import ResearchSession
 from aios.kernel.research_records import AgentReport, Hypothesis
 from aios.kernel.research_run import ResearchRun
 from aios.kernel.review import Review
+from aios.kernel.scheduler_runtime import SchedulerJobRun, SchedulerRuntime
 from aios.kernel.settlement import (
     DecisionEvaluation,
     DecisionOutcome,
@@ -64,6 +65,8 @@ from aios.storage.postgres.models import (
     ResearchSettlementRecordModel,
     ReviewRecord,
     RiskReviewRecord,
+    SchedulerJobRunRecord,
+    SchedulerRuntimeRecord,
     SimulatedExecutionRecord,
     SkillExecutionRecord,
     TradePlanRecord,
@@ -650,6 +653,71 @@ class PostgresStorage:
             )
         except SQLAlchemyError as exc:
             msg = f"failed to get ResearchSettlementRecord for {assembly_id}"
+            raise StorageOperationError(msg) from exc
+        finally:
+            session.close()
+
+    def health_check(self) -> None:
+        session = self._session_factory()
+        try:
+            session.execute(text("SELECT 1"))
+        except SQLAlchemyError as exc:
+            msg = "database health check failed"
+            raise StorageOperationError(msg) from exc
+        finally:
+            session.close()
+
+    def upsert_scheduler_runtime(self, runtime: SchedulerRuntime) -> None:
+        model = SchedulerRuntimeRecord(
+            scheduler_instance_id=runtime.scheduler_instance_id,
+            started_at=runtime.started_at,
+            last_heartbeat_at=runtime.last_heartbeat_at,
+            updated_at=runtime.updated_at,
+        )
+        session = self._session_factory()
+        try:
+            session.merge(model)
+            session.commit()
+        except SQLAlchemyError as exc:
+            session.rollback()
+            msg = f"failed to save SchedulerRuntime {runtime.scheduler_instance_id}"
+            raise StorageOperationError(msg) from exc
+        finally:
+            session.close()
+
+    def get_latest_scheduler_runtime(self) -> SchedulerRuntime | None:
+        session = self._session_factory()
+        try:
+            statement = select(SchedulerRuntimeRecord).order_by(
+                SchedulerRuntimeRecord.last_heartbeat_at.desc(),
+                SchedulerRuntimeRecord.scheduler_instance_id,
+            )
+            model = session.scalars(statement).first()
+            return cast("SchedulerRuntime", model_to_entity(model)) if model else None
+        except SQLAlchemyError as exc:
+            msg = "failed to get latest SchedulerRuntime"
+            raise StorageOperationError(msg) from exc
+        finally:
+            session.close()
+
+    def save_scheduler_job_run(self, job_run: SchedulerJobRun) -> None:
+        self.save(job_run)
+
+    def get_latest_scheduler_job_run(self, job_id: str) -> SchedulerJobRun | None:
+        session = self._session_factory()
+        try:
+            statement = (
+                select(SchedulerJobRunRecord)
+                .where(SchedulerJobRunRecord.job_id == job_id)
+                .order_by(
+                    SchedulerJobRunRecord.completed_at.desc(),
+                    SchedulerJobRunRecord.job_run_id,
+                )
+            )
+            model = session.scalars(statement).first()
+            return cast("SchedulerJobRun", model_to_entity(model)) if model else None
+        except SQLAlchemyError as exc:
+            msg = f"failed to get latest SchedulerJobRun for {job_id}"
             raise StorageOperationError(msg) from exc
         finally:
             session.close()

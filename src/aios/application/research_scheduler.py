@@ -138,15 +138,7 @@ class ResearchSchedulerService:
         return ResearchSchedulerResult(runs=tuple(runs), errors=tuple(errors))
 
     def _due_items(self, as_of: datetime) -> list[WatchlistItem]:
-        return [
-            item
-            for item in self._storage.list_watchlist_items(
-                status=WatchlistStatus.ACTIVE
-            )
-            if item.auto_research_enabled
-            and item.next_run_at is not None
-            and item.next_run_at <= as_of
-        ]
+        return research_due_items(self._storage, as_of)
 
     def _mark_success(self, item: WatchlistItem, as_of: datetime) -> None:
         WatchlistService(self._storage).update_item(
@@ -173,3 +165,13 @@ class ResearchSchedulerService:
             f"{item.market}:{item.symbol}:"
             f"{item.research_horizon_days}:{as_of.isoformat()}"
         )
+
+
+def research_due_items(storage: Storage, as_of: datetime) -> list[WatchlistItem]:
+    return [
+        item
+        for item in storage.list_watchlist_items(status=WatchlistStatus.ACTIVE)
+        if item.auto_research_enabled
+        and item.next_run_at is not None
+        and item.next_run_at <= as_of
+    ]

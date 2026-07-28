@@ -59,15 +59,20 @@ class SettlementSchedulerService:
         )
 
     def _due_executions(self, as_of: datetime) -> list[SimulatedExecution]:
-        due: list[SimulatedExecution] = []
-        for execution in self._storage.list(SimulatedExecution):
-            if self._storage.get_settlement_outcome_by_execution_id(
-                execution.execution_id
-            ):
-                continue
-            if execution.execution_status is not ExecutionStatus.WAITING_SETTLEMENT:
-                continue
-            plan = self._storage.get(TradePlan, execution.trade_plan_id)
-            if plan.expiry <= as_of:
-                due.append(execution)
-        return due
+        return settlement_due_executions(self._storage, as_of)
+
+
+def settlement_due_executions(
+    storage: Storage,
+    as_of: datetime,
+) -> list[SimulatedExecution]:
+    due: list[SimulatedExecution] = []
+    for execution in storage.list(SimulatedExecution):
+        if storage.get_settlement_outcome_by_execution_id(execution.execution_id):
+            continue
+        if execution.execution_status is not ExecutionStatus.WAITING_SETTLEMENT:
+            continue
+        plan = storage.get(TradePlan, execution.trade_plan_id)
+        if plan.expiry <= as_of:
+            due.append(execution)
+    return due

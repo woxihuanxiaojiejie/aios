@@ -788,6 +788,50 @@ class ResearchSettlementRecordModel(Base):
     )
 
 
+class SchedulerRuntimeRecord(Base):
+    __tablename__ = "scheduler_runtimes"
+    __table_args__ = (
+        Index("ix_scheduler_runtimes_last_heartbeat", "last_heartbeat_at"),
+    )
+
+    scheduler_instance_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    last_heartbeat_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class SchedulerJobRunRecord(Base):
+    __tablename__ = "scheduler_job_runs"
+    __table_args__ = (
+        Index("ix_scheduler_job_runs_job_completed", "job_id", "completed_at"),
+    )
+
+    job_run_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    job_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    completed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    processed_count: Mapped[int | None] = mapped_column(Integer)
+    success_count: Mapped[int | None] = mapped_column(Integer)
+    failure_count: Mapped[int | None] = mapped_column(Integer)
+    result_message: Mapped[str | None] = mapped_column(String(500))
+    error_type: Mapped[str | None] = mapped_column(String(128))
+    error_message: Mapped[str | None] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
 class ReviewRecord(Base):
     __tablename__ = "reviews"
     __table_args__ = (Index("ix_reviews_outcome", "outcome"),)

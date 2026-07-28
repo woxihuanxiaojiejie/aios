@@ -120,6 +120,7 @@ Available routes:
 GET  /health
 GET  /api/v1/health
 GET  /api/v1/dashboard/summary
+GET  /api/v1/system/status
 POST /api/v1/evidence
 GET  /api/v1/evidence
 GET  /api/v1/evidence/{evidence_id}
@@ -171,6 +172,13 @@ Run the standalone scheduler process against PostgreSQL:
 uv run aios scheduler serve
 ```
 
+The scheduler writes a minimal PostgreSQL heartbeat record while `serve` is
+running and records safe summaries for the two fixed jobs,
+`research_due_scan` and `settlement_due_scan`. The System status API treats a
+heartbeat as current when it is no older than three times the largest configured
+scan or misfire interval. If no heartbeat exists, scheduler status is `unknown`,
+not failed.
+
 Run one due scan manually:
 
 ```bash
@@ -195,6 +203,7 @@ The frontend AIOS results pages provide:
 /settlements     Settlement explorer
 /settlements/:settlementId Settlement detail
 /learning-proposals read-only pending Learning Proposals
+/system          read-only runtime status for backend, database, scheduler, jobs, queues, and providers
 ```
 
 The root path `/` redirects to `/dashboard`.
@@ -209,6 +218,13 @@ Simulated Execution, Settlement, Evaluation, Review, and Learning Proposal data.
 The Dashboard reads only `GET /api/v1/dashboard/summary`. It does not download
 all research, execution, settlement, or learning records to calculate its
 summary, and it does not render charts or market行情 widgets.
+
+The System page reads only `GET /api/v1/system/status`. It is read-only and does
+not restart services, edit Scheduler settings, display or edit keys, expose
+logs, or manage Docker or PostgreSQL. Provider status uses local configuration
+validation only and does not execute a paid external LLM request. Common status
+values are `healthy`, `degraded`, `unavailable`, `not_configured`, and
+`unknown`.
 
 Watchlist manual run results route to `/research/:runId` using the real
 `run.run_id` returned by the backend.

@@ -37,6 +37,7 @@ describe("App routing", () => {
       "Executions",
       "Settlements",
       "Learning Proposals",
+      "System",
     ]);
   });
 
@@ -77,6 +78,16 @@ describe("App routing", () => {
     expect(await screen.findByText("Learning Proposals")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /approve|reject|apply/i })).not.toBeInTheDocument();
   });
+
+  it("serves /system and keeps System last in navigation", async () => {
+    window.history.pushState({}, "", "/system");
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "System Runtime Status" })).toBeInTheDocument();
+    const navItems = screen.getAllByRole("menuitem").map((item) => item.textContent);
+    expect(navItems.at(-1)).toBe("System");
+  });
 });
 
 async function apiResponse(input: RequestInfo | URL) {
@@ -103,6 +114,68 @@ async function apiResponse(input: RequestInfo | URL) {
       attention_required: [],
       recent_research: [],
       recent_settlements: [],
+    });
+  }
+  if (url.endsWith("/system/status")) {
+    return json({
+      generated_at: "2026-07-28T08:00:00Z",
+      overall_status: "healthy",
+      application: {
+        status: "healthy",
+        name: "AIOS",
+        version: "0.1.0",
+        commit: null,
+        environment: null,
+        started_at: null,
+        checked_at: "2026-07-28T08:00:00Z",
+        message: "git commit was not injected",
+      },
+      database: {
+        status: "healthy",
+        backend: "in_memory",
+        checked_at: "2026-07-28T08:00:00Z",
+        latency_ms: 0,
+        message: null,
+      },
+      scheduler: {
+        status: "unknown",
+        running: false,
+        last_heartbeat_at: null,
+        heartbeat_age_seconds: null,
+        message: "scheduler heartbeat has not been recorded",
+      },
+      jobs: {
+        research_due_scan: {
+          status: "unknown",
+          enabled: true,
+          last_started_at: null,
+          last_completed_at: null,
+          last_result: null,
+          last_error: null,
+          processed_count: null,
+          success_count: null,
+          failure_count: null,
+        },
+        settlement_due_scan: {
+          status: "unknown",
+          enabled: true,
+          last_started_at: null,
+          last_completed_at: null,
+          last_result: null,
+          last_error: null,
+          processed_count: null,
+          success_count: null,
+          failure_count: null,
+        },
+      },
+      queues: {
+        research_due: 0,
+        settlement_due: 0,
+        failed_research_runs: 0,
+        resumable_research_runs: 0,
+      },
+      providers: [],
+      issues: [],
     });
   }
   if (url.includes("/research/runs")) {

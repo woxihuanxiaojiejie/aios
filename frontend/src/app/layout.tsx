@@ -27,6 +27,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
               key: "/learning-proposals",
               label: <Link to="/learning-proposals">Learning Proposals</Link>,
             },
+            { key: "/system", label: <Link to="/system">System</Link> },
           ]}
         />
       </Header>
@@ -40,6 +41,7 @@ function selectedNavKey(pathname: string) {
   if (pathname.startsWith("/executions")) return "/executions";
   if (pathname.startsWith("/settlements")) return "/settlements";
   if (pathname.startsWith("/learning-proposals")) return "/learning-proposals";
+  if (pathname.startsWith("/system")) return "/system";
   if (pathname.startsWith("/research")) return "/research";
   return "/dashboard";
 }

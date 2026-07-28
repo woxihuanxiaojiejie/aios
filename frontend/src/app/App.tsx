@@ -51,6 +51,11 @@ const LearningProposalsPage = lazy(() =>
     default: module.LearningProposalsPage,
   })),
 );
+const SystemStatusPage = lazy(() =>
+  import("../features/system/pages/SystemStatusPage").then((module) => ({
+    default: module.SystemStatusPage,
+  })),
+);
 
 export function App() {
   return (
@@ -70,6 +75,7 @@ export function App() {
                 <Route path="/settlements" element={<SettlementsPage />} />
                 <Route path="/settlements/:settlementId" element={<SettlementDetailPage />} />
                 <Route path="/learning-proposals" element={<LearningProposalsPage />} />
+                <Route path="/system" element={<SystemStatusPage />} />
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />
               </Routes>
             </Suspense>

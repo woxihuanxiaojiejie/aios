@@ -25,6 +25,7 @@ from aios.kernel.research import ResearchSession
 from aios.kernel.research_records import AgentReport, Hypothesis
 from aios.kernel.research_run import ResearchRun
 from aios.kernel.review import Review
+from aios.kernel.scheduler_runtime import SchedulerJobRun, SchedulerRuntime
 from aios.kernel.settlement import (
     DecisionEvaluation,
     DecisionOutcome,
@@ -197,3 +198,18 @@ class Storage(Protocol):
         status: str | None = None,
     ) -> builtins.list[ResearchRun]:
         """Return ResearchRun orchestration records filtered by run metadata."""
+
+    def health_check(self) -> None:
+        """Run a minimal storage backend health check."""
+
+    def upsert_scheduler_runtime(self, runtime: SchedulerRuntime) -> None:
+        """Create or replace one scheduler runtime heartbeat record."""
+
+    def get_latest_scheduler_runtime(self) -> SchedulerRuntime | None:
+        """Return the latest scheduler runtime heartbeat record, if any."""
+
+    def save_scheduler_job_run(self, job_run: SchedulerJobRun) -> None:
+        """Persist one scheduler job run audit record."""
+
+    def get_latest_scheduler_job_run(self, job_id: str) -> SchedulerJobRun | None:
+        """Return the latest scheduler job run record for one fixed job."""

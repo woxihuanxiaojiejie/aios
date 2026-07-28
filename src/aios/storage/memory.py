@@ -43,6 +43,7 @@ from aios.kernel.research import ResearchSession
 from aios.kernel.research_records import AgentReport, Hypothesis
 from aios.kernel.research_run import ResearchRun
 from aios.kernel.review import Review
+from aios.kernel.scheduler_runtime import SchedulerJobRun, SchedulerRuntime
 from aios.kernel.settlement import (
     DecisionEvaluation,
     DecisionOutcome,
@@ -70,6 +71,8 @@ SUPPORTED_ENTITY_TYPES = (
     DecisionAssemblyRecord,
     ResearchSettlementRecord,
     ResearchRun,
+    SchedulerRuntime,
+    SchedulerJobRun,
     SkillDefinition,
     AnalysisTask,
     SkillExecution,
@@ -444,6 +447,28 @@ class InMemoryStorage:
                 return record
         return None
 
+    def health_check(self) -> None:
+        return None
+
+    def upsert_scheduler_runtime(self, runtime: SchedulerRuntime) -> None:
+        with self._lock:
+            self._entities[SchedulerRuntime][runtime.scheduler_instance_id] = runtime
+
+    def get_latest_scheduler_runtime(self) -> SchedulerRuntime | None:
+        runtimes = self.list(SchedulerRuntime)
+        if not runtimes:
+            return None
+        return max(runtimes, key=lambda runtime: runtime.last_heartbeat_at)
+
+    def save_scheduler_job_run(self, job_run: SchedulerJobRun) -> None:
+        self.save(job_run)
+
+    def get_latest_scheduler_job_run(self, job_id: str) -> SchedulerJobRun | None:
+        runs = [run for run in self.list(SchedulerJobRun) if run.job_id == job_id]
+        if not runs:
+            return None
+        return max(runs, key=lambda run: run.completed_at)
+
     def list_research_runs(
         self,
         *,
@@ -466,5 +491,9 @@ class InMemoryStorage:
     def _sort_key(self, entity: KernelModel) -> tuple[datetime, str]:
         if isinstance(entity, SkillExecution):
             return entity.started_at, entity.entity_id
+        if isinstance(entity, SchedulerRuntime):
+            return entity.last_heartbeat_at, entity.entity_id
+        if isinstance(entity, SchedulerJobRun):
+            return entity.completed_at, entity.entity_id
         sortable = cast("_CreatedEntity", entity)
         return sortable.created_at, sortable.entity_id
