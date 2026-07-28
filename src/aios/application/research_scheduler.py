@@ -83,6 +83,9 @@ class ResearchSchedulerService:
         runs: list[ResearchRun] = []
         errors: list[ResearchSchedulerError] = []
         for item in self._due_items(as_of):
+            if self._has_research_run_for_window(item, as_of):
+                self._advance_next_run(item, as_of)
+                continue
             if not self._trading_calendar.is_research_time(
                 as_of=as_of,
                 schedule_time=item.schedule_time,
@@ -127,6 +130,7 @@ class ResearchSchedulerService:
                     updated_at=now,
                 )
                 self._storage.save(failed_run)
+                self._advance_next_run(item, as_of)
                 errors.append(
                     ResearchSchedulerError(
                         watchlist_item_id=item.watchlist_item_id,
@@ -164,6 +168,19 @@ class ResearchSchedulerService:
         return (
             f"{item.market}:{item.symbol}:"
             f"{item.research_horizon_days}:{as_of.isoformat()}"
+        )
+
+    def _has_research_run_for_window(
+        self,
+        item: WatchlistItem,
+        as_of: datetime,
+    ) -> bool:
+        window_key = self._research_window_key(item, as_of)
+        return any(
+            run.research_window_key == window_key
+            for run in self._storage.list_research_runs(
+                watchlist_item_id=item.watchlist_item_id
+            )
         )
 
 

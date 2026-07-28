@@ -199,6 +199,39 @@ def test_research_due_scan_persists_runtime_error_as_failed_run() -> None:
     assert runs[0].research_window_key == f"CN:600519:3:{AS_OF.isoformat()}"
 
 
+def test_research_due_scan_does_not_repeat_failed_window() -> None:
+    storage = InMemoryStorage()
+    item = WatchlistService(storage).add_item(
+        symbol="600519",
+        market="CN",
+        auto_research_enabled=True,
+        research_horizon_days=3,
+        schedule_time=time(15, 0),
+        schedule_timezone="Asia/Shanghai",
+        next_run_at=AS_OF - timedelta(minutes=1),
+    )
+    service = ResearchSchedulerService(
+        storage=storage,
+        runtime=FailingRuntime(),
+        trading_calendar=FakeTradingCalendar(),
+        workflow="brain",
+        provider="fake",
+        model="fake/model",
+    )
+
+    first = service.run_due_once(as_of=AS_OF)
+    second = service.run_due_once(as_of=AS_OF)
+
+    updated = storage.get(type(item), item.watchlist_item_id)
+    runs = storage.list(ResearchRun)
+    assert len(first.errors) == 1
+    assert second.runs == ()
+    assert second.errors == ()
+    assert len(runs) == 1
+    assert runs[0].research_window_key == f"CN:600519:3:{AS_OF.isoformat()}"
+    assert updated.next_run_at == datetime(2026, 8, 4, 15, 0, tzinfo=UTC)
+
+
 def test_settlement_due_scan_settles_simulated_executions_once() -> None:
     storage, execution, adapter = _waiting_settlement_execution()
     service = SettlementSchedulerService(
