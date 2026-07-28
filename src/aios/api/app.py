@@ -18,6 +18,7 @@ from aios.api.routes import (
     decisions,
     evidence,
     experiments,
+    explorer,
     health,
     learnings,
     market_data,
@@ -85,6 +86,8 @@ def create_app(
     app.include_router(market_data.baostock_router, prefix="/api/v1")
     app.include_router(decision_generation.router, prefix="/api/v1")
     app.include_router(research.router, prefix="/api/v1")
+    app.include_router(explorer.executions_router, prefix="/api/v1")
+    app.include_router(explorer.settlements_router, prefix="/api/v1")
 
     return app
 

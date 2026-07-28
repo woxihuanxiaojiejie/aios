@@ -22,6 +22,7 @@ import {
   formatPercent,
 } from "../../../shared/researchDisplay";
 import { ApiError } from "../../../infrastructure/api/client";
+import { DownstreamSections } from "../../explorer/pages/common";
 import { useResearchRunDetail } from "../hooks";
 import type { ResearchRunDetail } from "../types";
 import type {
@@ -65,11 +66,18 @@ export function ResearchRunDetailPage() {
       <DiscussionSection detail={detail.data} />
       <DecisionSection decision={detail.data.decision} runStatus={detail.data.run.status} />
       <TradePlanSection tradePlan={detail.data.trade_plan} />
-      <Alert
-        className="tool-card"
-        type="info"
-        showIcon
-        title="模拟执行与结算将在下一阶段接入"
+      <DownstreamSections
+        detail={{
+          research_run: detail.data.run,
+          research_session: detail.data.session,
+          decision: detail.data.decision,
+          trade_plan: detail.data.trade_plan,
+          simulated_execution: detail.data.simulated_execution,
+          settlement: detail.data.settlement,
+          evaluation: detail.data.evaluation,
+          review: detail.data.review,
+          learning_proposals: detail.data.learning_proposals,
+        }}
       />
     </section>
   );

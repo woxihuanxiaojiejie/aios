@@ -32,7 +32,8 @@ describe("ResearchRunDetailPage", () => {
     expect(screen.getByText("第一阶段：盲报")).toBeInTheDocument();
     expect(screen.getByText("第二阶段：讨论与修订")).toBeInTheDocument();
     expect(screen.getByText("buy")).toBeInTheDocument();
-    expect(screen.getByText("模拟执行与结算将在下一阶段接入")).toBeInTheDocument();
+    expect(screen.getByText("Simulated Execution")).toBeInTheDocument();
+    expect(screen.getByText("sx_123")).toBeInTheDocument();
   });
 
   it("shows an explicit empty decision state without defaulting to no_trade", async () => {
@@ -315,6 +316,32 @@ function detailFixture(): ResearchRunDetail {
       created_at: "2026-07-28T08:04:00Z",
       updated_at: "2026-07-28T08:04:00Z",
     },
+    simulated_execution: {
+      execution_id: "sx_123",
+      trade_plan_id: "tp_123",
+      decision_id: "dc_123",
+      research_session_id: "rs_123",
+      symbol: "600519",
+      direction: "bullish",
+      execution_status: "waiting_settlement",
+      execution_date: "2026-07-28T00:00:00Z",
+      market_bar_id: "fixture:600519",
+      market_data_source: "fixture",
+      planned_entry: "10.00",
+      executed_entry: "10.00",
+      executed_exit: "10.50",
+      position_size: "0.2",
+      fee: "0.001",
+      slippage: "0",
+      realized_return: "0.05",
+      exit_reason: "target",
+      created_at: "2026-07-28T08:05:00Z",
+      updated_at: "2026-07-28T08:05:00Z",
+    },
+    settlement: null,
+    evaluation: null,
+    review: null,
+    learning_proposals: [],
   };
 }
 

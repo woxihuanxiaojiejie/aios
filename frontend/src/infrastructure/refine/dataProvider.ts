@@ -69,8 +69,13 @@ function listPath(params: GetListParams) {
     params.pagination && "current" in params.pagination
       ? Number(params.pagination.current)
       : params.pagination?.currentPage ?? 1;
-  url.searchParams.set("limit", String(pageSize));
-  url.searchParams.set("offset", String((current - 1) * pageSize));
+  if (params.resource === "simulated-executions" || params.resource === "settlements") {
+    url.searchParams.set("page", String(current));
+    url.searchParams.set("page_size", String(pageSize));
+  } else {
+    url.searchParams.set("limit", String(pageSize));
+    url.searchParams.set("offset", String((current - 1) * pageSize));
+  }
   for (const filter of params.filters ?? []) {
     if ("field" in filter && filter.value !== undefined && filter.value !== null) {
       url.searchParams.set(filter.field, String(filter.value));
@@ -82,6 +87,9 @@ function listPath(params: GetListParams) {
 function collectionPath(resource: string) {
   if (resource === "watchlist") return "/research/watchlist";
   if (resource === "research-runs") return "/research/runs";
+  if (resource === "simulated-executions") return "/simulated-executions";
+  if (resource === "settlements") return "/settlements";
+  if (resource === "learnings") return "/learnings";
   throw new Error(`Unsupported Refine resource: ${resource}`);
 }
 

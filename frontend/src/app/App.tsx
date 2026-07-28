@@ -26,6 +26,31 @@ const ResearchRunDetailPage = lazy(() =>
     default: module.ResearchRunDetailPage,
   })),
 );
+const ExecutionsPage = lazy(() =>
+  import("../features/explorer/pages/ExecutionsPage").then((module) => ({
+    default: module.ExecutionsPage,
+  })),
+);
+const ExecutionDetailPage = lazy(() =>
+  import("../features/explorer/pages/ExecutionDetailPage").then((module) => ({
+    default: module.ExecutionDetailPage,
+  })),
+);
+const SettlementsPage = lazy(() =>
+  import("../features/explorer/pages/SettlementsPage").then((module) => ({
+    default: module.SettlementsPage,
+  })),
+);
+const SettlementDetailPage = lazy(() =>
+  import("../features/explorer/pages/SettlementDetailPage").then((module) => ({
+    default: module.SettlementDetailPage,
+  })),
+);
+const LearningProposalsPage = lazy(() =>
+  import("../features/explorer/pages/LearningProposalsPage").then((module) => ({
+    default: module.LearningProposalsPage,
+  })),
+);
 
 export function App() {
   return (
@@ -40,6 +65,11 @@ export function App() {
                 <Route path="/research" element={<ResearchRunsPage />} />
                 <Route path="/research/new" element={<ResearchNewPage />} />
                 <Route path="/research/:runId" element={<ResearchRunDetailPage />} />
+                <Route path="/executions" element={<ExecutionsPage />} />
+                <Route path="/executions/:executionId" element={<ExecutionDetailPage />} />
+                <Route path="/settlements" element={<SettlementsPage />} />
+                <Route path="/settlements/:settlementId" element={<SettlementDetailPage />} />
+                <Route path="/learning-proposals" element={<LearningProposalsPage />} />
                 <Route path="*" element={<Navigate to="/watchlist" replace />} />
               </Routes>
             </Suspense>

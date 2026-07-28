@@ -5,11 +5,16 @@ import type {
   Decision,
   DecisionAssembly,
   DecisionProposal,
+  Evaluation,
   Evidence,
   Hypothesis,
+  Learning,
+  Outcome,
   ResearchRun,
   ResearchSession,
+  Review,
   RiskReview,
+  SimulatedExecution,
   TradePlan,
   WatchlistItem,
 } from "../../../infrastructure/api/research";
@@ -39,6 +44,11 @@ export type ResearchRunDetail = {
   discussion: ResearchRunDiscussion;
   decision: Decision | null;
   trade_plan: TradePlan | null;
+  simulated_execution: SimulatedExecution | null;
+  settlement: Outcome | null;
+  evaluation: Evaluation | null;
+  review: Review | null;
+  learning_proposals: Learning[];
 };
 
 export type ResearchRunFilters = {

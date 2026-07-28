@@ -339,6 +339,15 @@ export type SimulatedExecution = {
   direction: string;
   execution_status: string;
   execution_date: string | null;
+  market_bar_id: string | null;
+  market_data_source: string | null;
+  planned_entry: string;
+  executed_entry: string | null;
+  executed_exit: string | null;
+  position_size: string;
+  fee: string;
+  slippage: string;
+  realized_return: string | null;
   exit_reason: string;
   created_at: string;
   updated_at: string;
@@ -367,6 +376,15 @@ export type Outcome = {
   market_data_source: string;
   settled_at: string;
   status: string;
+  execution_id: string | null;
+  trade_plan_id: string | null;
+  research_session_id: string | null;
+  pnl: string | null;
+  return_rate: string | null;
+  holding_days: number | null;
+  exit_reason: string | null;
+  max_drawdown: string | null;
+  max_favorable_excursion: string | null;
   created_at: string;
 };
 
@@ -382,6 +400,10 @@ export type Evaluation = {
   evaluation_rules_version: string;
   evaluated_at: string;
   explanation: string;
+  prediction_accuracy: string | null;
+  timing_accuracy: string | null;
+  risk_control: string | null;
+  execution_quality: string | null;
   created_at: string;
 };
 
@@ -394,6 +416,12 @@ export type Review = {
   outcome: string;
   cause_tags: string[];
   review_summary: string;
+  success_reasons: string[];
+  failure_reasons: string[];
+  effective_evidence_ids: string[];
+  effective_skill_ids: string[];
+  mistaken_judgement_ids: string[];
+  reference_ids: Record<string, string[]>;
   created_at: string;
 };
 

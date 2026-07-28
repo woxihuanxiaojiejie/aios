@@ -41,6 +41,26 @@ describe("App routing", () => {
       await screen.findByText("AIOS 人工验收工作台"),
     ).toBeInTheDocument();
   });
+
+  it("serves the execution and settlement explorer routes", async () => {
+    window.history.pushState({}, "", "/executions");
+    const { unmount } = render(<App />);
+
+    expect(await screen.findByText("Simulated Executions")).toBeInTheDocument();
+    unmount();
+
+    window.history.pushState({}, "", "/settlements");
+    const settlements = render(<App />);
+
+    expect(await screen.findByText("Settlements")).toBeInTheDocument();
+    settlements.unmount();
+
+    window.history.pushState({}, "", "/learning-proposals");
+    render(<App />);
+
+    expect(await screen.findByText("Learning Proposals")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /approve|reject|apply/i })).not.toBeInTheDocument();
+  });
 });
 
 async function apiResponse(input: RequestInfo | URL) {
@@ -50,6 +70,15 @@ async function apiResponse(input: RequestInfo | URL) {
   }
   if (url.includes("/research/runs")) {
     return json({ items: [], total: 0, limit: 10, offset: 0, count: 0 });
+  }
+  if (url.includes("/simulated-executions")) {
+    return json({ items: [], total: 0, page: 1, page_size: 10, count: 0 });
+  }
+  if (url.includes("/settlements")) {
+    return json({ items: [], total: 0, page: 1, page_size: 10, count: 0 });
+  }
+  if (url.includes("/learnings")) {
+    return json({ items: [], total: 0, limit: 50, offset: 0, count: 0 });
   }
   if (url.endsWith("/evidence") || url.endsWith("/research/sessions")) {
     return json({ items: [], total: 0, limit: 50, offset: 0 });

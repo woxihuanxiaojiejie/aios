@@ -6,9 +6,7 @@ const { Header, Content } = Layout;
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const location = useLocation();
-  const selectedKey = location.pathname.startsWith("/research")
-    ? "/research"
-    : "/watchlist";
+  const selectedKey = selectedNavKey(location.pathname);
 
   return (
     <Layout className="aios-shell">
@@ -21,12 +19,25 @@ export function AppLayout({ children }: { children: ReactNode }) {
           selectedKeys={[selectedKey]}
           className="aios-nav"
           items={[
-            { key: "/watchlist", label: <Link to="/watchlist">Watchlist</Link> },
             { key: "/research", label: <Link to="/research">Research</Link> },
+            { key: "/executions", label: <Link to="/executions">Executions</Link> },
+            { key: "/settlements", label: <Link to="/settlements">Settlements</Link> },
+            {
+              key: "/learning-proposals",
+              label: <Link to="/learning-proposals">Learning Proposals</Link>,
+            },
           ]}
         />
       </Header>
       <Content className="aios-content">{children}</Content>
     </Layout>
   );
+}
+
+function selectedNavKey(pathname: string) {
+  if (pathname.startsWith("/executions")) return "/executions";
+  if (pathname.startsWith("/settlements")) return "/settlements";
+  if (pathname.startsWith("/learning-proposals")) return "/learning-proposals";
+  if (pathname.startsWith("/research")) return "/research";
+  return "/research";
 }

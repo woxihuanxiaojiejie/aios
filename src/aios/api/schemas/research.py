@@ -241,6 +241,11 @@ class ResearchRunDetailResponse(ApiSchema):
     discussion: ResearchRunDiscussionResponse
     decision: DecisionResponse | None = None
     trade_plan: TradePlanResponse | None = None
+    simulated_execution: SimulatedExecutionResponse | None = None
+    settlement: DecisionOutcomeResponse | None = None
+    evaluation: DecisionEvaluationResponse | None = None
+    review: ReviewResponse | None = None
+    learning_proposals: list[LearningResponse] = Field(default_factory=list)
 
 
 class SchedulerErrorResponse(ApiSchema):

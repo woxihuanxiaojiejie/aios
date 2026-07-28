@@ -46,6 +46,20 @@ export function AppProviders({ children }: { children: ReactNode }) {
                 show: "/research/:runId",
                 create: "/research/new",
               },
+              {
+                name: "simulated-executions",
+                list: "/executions",
+                show: "/executions/:executionId",
+              },
+              {
+                name: "settlements",
+                list: "/settlements",
+                show: "/settlements/:settlementId",
+              },
+              {
+                name: "learnings",
+                list: "/learning-proposals",
+              },
             ]}
             options={{ syncWithLocation: false }}
           >

@@ -101,6 +101,7 @@ from aios.application.brain_research_pipeline import BrainEvidenceRepository
 from aios.application.debate import DebateService
 from aios.application.decision_generation import DecisionGenerationService
 from aios.application.decision_settlement import DecisionSettlementService
+from aios.application.explorer import ExecutionSettlementExplorer
 from aios.application.market_evidence import MarketEvidenceImportService
 from aios.application.research_lifecycle import ResearchLifecycleService
 from aios.application.research_records import ResearchRecordService
@@ -225,6 +226,9 @@ def get_research_run_detail(
     lifecycle: LifecycleDep,
 ) -> ResearchRunDetailResponse:
     run = lifecycle.storage.get(ResearchRun, run_id)
+    downstream = ExecutionSettlementExplorer(lifecycle.storage).research_run_detail(
+        run_id
+    )
     watchlist_item = _optional_get(
         lifecycle,
         WatchlistItem,
@@ -269,6 +273,25 @@ def get_research_run_detail(
         discussion=discussion,
         decision=decision_response(decision) if decision else None,
         trade_plan=trade_plan_response(trade_plan) if trade_plan else None,
+        simulated_execution=(
+            simulated_execution_response(downstream.simulated_execution)
+            if downstream.simulated_execution
+            else None
+        ),
+        settlement=(
+            decision_outcome_response(downstream.settlement)
+            if downstream.settlement
+            else None
+        ),
+        evaluation=(
+            decision_evaluation_response(downstream.evaluation)
+            if downstream.evaluation
+            else None
+        ),
+        review=review_response(downstream.review) if downstream.review else None,
+        learning_proposals=[
+            learning_response(learning) for learning in downstream.learning_proposals
+        ],
     )
 
 

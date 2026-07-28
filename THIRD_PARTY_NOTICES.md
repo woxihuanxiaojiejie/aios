@@ -19,3 +19,14 @@ Only npm dependencies and current repository code were reused. Ant Design,
 Refine, TanStack Query, React Router, Vite, and related packages remain consumed
 as package dependencies under their upstream licenses; no vendored source files
 were added.
+
+## Execution & Settlement Explorer
+
+No third-party source files were copied into this repository for the Execution
+& Settlement Explorer milestone.
+
+The implementation reused current repository code plus existing npm
+dependencies: React, React DOM, React Router, Refine, TanStack Query, Ant
+Design, Vite, Vitest, Testing Library, TypeScript, and ESLint. These packages
+remain consumed through `package.json` / `package-lock.json` under their
+upstream licenses. No new UI framework was introduced.
