@@ -17,6 +17,112 @@ body {
   min-width: 320px;
 }
 
+.aios-shell {
+  min-height: 100vh;
+  background: #f3f6f9;
+}
+
+.aios-header {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  height: 58px;
+  border-bottom: 1px solid #d8e0e8;
+  background: #fff;
+  padding: 0 24px;
+}
+
+.aios-title.ant-typography {
+  margin: 0;
+  color: #17212f;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.aios-nav {
+  min-width: 260px;
+  flex: 1;
+  border-bottom: 0;
+}
+
+.aios-content {
+  padding: 20px 24px 34px;
+}
+
+.page-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.page-heading .ant-typography {
+  margin: 0;
+}
+
+.page-alert {
+  margin-bottom: 14px;
+}
+
+.tool-card {
+  margin-bottom: 16px;
+}
+
+.watchlist-page {
+  width: min(1320px, 100%);
+  margin: 0 auto;
+}
+
+.watchlist-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(170px, 1fr));
+  gap: 0 14px;
+}
+
+.watchlist-checkbox {
+  align-self: end;
+}
+
+.watchlist-edit-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inline-edit-label {
+  display: inline;
+  margin: 0;
+  color: #66758a;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.full-width {
+  width: 100%;
+}
+
+@media (max-width: 780px) {
+  .aios-header {
+    height: auto;
+    flex-wrap: wrap;
+    padding: 12px 16px;
+  }
+
+  .aios-content {
+    padding: 16px;
+  }
+
+  .page-heading {
+    display: grid;
+  }
+
+  .watchlist-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 button,
 input,
 textarea {

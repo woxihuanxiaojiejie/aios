@@ -5,7 +5,7 @@ import {
   type ColumnDef,
 } from "@tanstack/react-table";
 
-import type { HistoryRow } from "./api";
+import type { HistoryRow } from "../../infrastructure/api/research";
 
 const columns: ColumnDef<HistoryRow>[] = [
   {

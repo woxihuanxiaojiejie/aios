@@ -22,8 +22,11 @@ import type {
   ResearchSession,
   RiskReview,
   WatchlistItem,
-} from "./api";
-import { ApiError, researchApi } from "./api";
+} from "../../infrastructure/api/research";
+import {
+  ApiError,
+  researchApi,
+} from "../../infrastructure/api/research";
 
 type ChainState = {
   watchlist?: WatchlistItem;
@@ -1224,10 +1227,10 @@ function formatError(error: unknown) {
     if (error.code === "invalid_state_transition") {
       return "当前流程状态不允许执行此操作。";
     }
-    if (error.code === "not_found") {
+    if (error.code === "not_found" || error.code === "entity_not_found") {
       return "未找到对应记录。";
     }
-    if (error.code === "conflict") {
+    if (error.code === "conflict" || error.code === "entity_conflict") {
       return "当前记录已存在或操作发生冲突。";
     }
     return `操作失败：${error.message}`;

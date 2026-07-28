@@ -12,12 +12,16 @@
     "build": "vite build"
   },
   "dependencies": {
+    "@refinedev/core": "^5.0.12",
     "@tanstack/react-query": "^5.66.0",
     "@tanstack/react-table": "^8.20.6",
+    "antd": "^6.5.2",
+    "echarts": "^6.1.0",
     "lightweight-charts": "^4.2.3",
     "lucide-react": "^0.468.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.18.1"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.6.3",

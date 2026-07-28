@@ -1,4 +1,4 @@
-import type { MarketBar } from "./api";
+import type { MarketBar } from "../../infrastructure/api/research";
 
 type Props = {
   bars: MarketBar[];

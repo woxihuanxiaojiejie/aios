@@ -6,6 +6,10 @@ export type ApiErrorBody = {
   };
 };
 
+import { ApiError, apiClient } from "./client";
+
+export { ApiError };
+
 export type MarketBar = {
   symbol: string;
   market: string;
@@ -400,39 +404,12 @@ export type HistoryResponse = {
   rows: HistoryRow[];
 };
 
-export class ApiError extends Error {
-  code: string;
-  status: number;
-
-  constructor(status: number, code: string, message: string) {
-    super(message);
-    this.name = "ApiError";
-    this.status = status;
-    this.code = code;
-  }
-}
-
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
-
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers: {
-      "content-type": "application/json",
-      ...init?.headers,
-    },
-  });
-  const body = (await response.json().catch(() => null)) as unknown;
-  if (!response.ok) {
-    const error = body as ApiErrorBody | null;
-    throw new ApiError(
-      response.status,
-      error?.error?.code ?? "request_failed",
-      error?.error?.message ?? "Backend request failed",
-    );
-  }
-  return body as T;
+  const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+  if (init?.method === "POST") return apiClient.post<T>(path, body);
+  if (init?.method === "PATCH") return apiClient.patch<T>(path, body);
+  if (init?.method === "DELETE") return apiClient.delete<T>(path);
+  return apiClient.get<T>(path);
 }
 
 export const researchApi = {
