@@ -35,3 +35,22 @@ TanStack Query, and shared Research display helpers.
 | Refine | npm package `@refinedev/core` | direct imports | MIT | npm dependency reuse | no source copied | reused |
 | React Router | npm package `react-router-dom` | direct imports | MIT | npm dependency reuse | no source copied | reused |
 | TanStack Query | npm package `@tanstack/react-query` | direct imports | MIT | npm dependency reuse | no source copied | reused |
+
+## AIOS Results Home & Core Detail Completeness
+
+This milestone copied no external source files and introduced no charting,
+market-data, news, or professional行情 UI dependencies. It reused the existing
+React Router lazy-route pattern, API client, ApiError handling, Ant Design,
+TanStack Query, shared display helpers, and the backend-linked
+ExecutionSettlementExplorer detail model.
+
+| Component | Original Location | New Location | License | Reuse Method | Modifications | Status |
+| -- | ---- | --- | --- | ---- | ---- | -- |
+| API client and ApiError | `frontend/src/infrastructure/api/client.ts` | unchanged | repository code | direct reuse | added Dashboard feature API wrapper only | reused |
+| React Router app shell | `frontend/src/app/App.tsx` | unchanged | repository code | extended existing lazy route pattern | added `/dashboard`; `/` redirects to `/dashboard` | reused |
+| Application navigation | `frontend/src/app/layout.tsx` | unchanged | repository code | extended existing Ant Design Menu | ordered Dashboard, Research, Executions, Settlements, Learning Proposals | reused |
+| Loading, empty, error, status, time, percent display | `frontend/src/shared/researchDisplay.tsx` | unchanged | repository code | direct reuse | none | reused |
+| Explorer chain sections | `frontend/src/features/explorer/pages/common.tsx` | unchanged | repository code | expanded in place | added full Decision, Trade Plan, Execution, Settlement, Evaluation, Review, Learning fields | reused |
+| Research Run detail page | `frontend/src/features/research/pages/ResearchRunDetailPage.tsx` | unchanged | repository code | expanded in place | added missing Evidence, Skill Report, Hypothesis, Discussion, Decision, Trade Plan fields | reused |
+| Ant Design components | npm package `antd` | direct imports | MIT | npm dependency reuse | no source copied | reused |
+| Chart dependencies | `echarts`, `lightweight-charts` | removed | upstream package licenses | no runtime reuse | removed unused isolated chart dependencies and unused `CandlestickChart.tsx` | removed |

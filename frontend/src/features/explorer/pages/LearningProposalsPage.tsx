@@ -38,6 +38,20 @@ export function LearningProposalsPage() {
     },
     { title: "Target", dataIndex: "target", width: 180 },
     {
+      title: "Current Value",
+      width: 220,
+      render: (_value, record) => (
+        <Typography.Text>{JSON.stringify(record.before)}</Typography.Text>
+      ),
+    },
+    {
+      title: "Proposed Value",
+      width: 220,
+      render: (_value, record) => (
+        <Typography.Text>{JSON.stringify(record.after)}</Typography.Text>
+      ),
+    },
+    {
       title: "Proposed Change",
       width: 260,
       render: (_value, record) => (
@@ -46,6 +60,10 @@ export function LearningProposalsPage() {
         </Typography.Text>
       ),
     },
+    { title: "Reason", dataIndex: "reason", width: 240 },
+    { title: "Supporting Evidence", width: 180, render: () => "-" },
+    { title: "Expected Effect", width: 180, render: () => "-" },
+    { title: "Risks", width: 120, render: () => "-" },
     {
       title: "Review Source",
       dataIndex: "review_id",

@@ -13,15 +13,31 @@ describe("App routing", () => {
     window.history.replaceState({}, "", "/");
   });
 
-  it("redirects / to the watchlist page", async () => {
+  it("redirects / to the dashboard page", async () => {
     window.history.pushState({}, "", "/");
 
     render(<App />);
 
-    await waitFor(() => expect(window.location.pathname).toBe("/watchlist"));
+    await waitFor(() => expect(window.location.pathname).toBe("/dashboard"));
     expect(
-      await screen.findByRole("heading", { name: "Watchlist" }),
+      await screen.findByRole("heading", { name: "AIOS Results Home" }),
     ).toBeInTheDocument();
+  });
+
+  it("serves /dashboard and keeps dashboard first in navigation", async () => {
+    window.history.pushState({}, "", "/dashboard");
+
+    render(<App />);
+
+    expect(await screen.findByText("Research Runs 总数")).toBeInTheDocument();
+    const navItems = screen.getAllByRole("menuitem").map((item) => item.textContent);
+    expect(navItems).toEqual([
+      "Dashboard",
+      "Research",
+      "Executions",
+      "Settlements",
+      "Learning Proposals",
+    ]);
   });
 
   it("serves the Research Runs list at /research", async () => {
@@ -67,6 +83,27 @@ async function apiResponse(input: RequestInfo | URL) {
   const url = String(input);
   if (url.endsWith("/research/watchlist")) {
     return json({ items: [], total: 0, limit: 50, offset: 0 });
+  }
+  if (url.endsWith("/dashboard/summary")) {
+    return json({
+      generated_at: "2026-07-28T08:00:00Z",
+      counts: {
+        research_runs: 0,
+        completed_research_runs: 0,
+        failed_or_resumable_research_runs: 0,
+        decisions: 0,
+        trade_plans: 0,
+        simulated_executions: 0,
+        settlements: 0,
+        pending_learning_proposals: 0,
+        positive_settlements: 0,
+        negative_settlements: 0,
+      },
+      performance: { average_return: null },
+      attention_required: [],
+      recent_research: [],
+      recent_settlements: [],
+    });
   }
   if (url.includes("/research/runs")) {
     return json({ items: [], total: 0, limit: 10, offset: 0, count: 0 });

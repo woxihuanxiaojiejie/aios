@@ -14,6 +14,7 @@ from aios.api.errors import add_exception_handlers
 from aios.api.routes import (
     brain002,
     brain_evidence,
+    dashboard,
     decision_generation,
     decisions,
     evidence,
@@ -78,6 +79,7 @@ def create_app(
     app.include_router(evidence.router, prefix="/api/v1")
     app.include_router(brain_evidence.router, prefix="/api/v1")
     app.include_router(brain002.router, prefix="/api/v1")
+    app.include_router(dashboard.router, prefix="/api/v1")
     app.include_router(experiments.router, prefix="/api/v1")
     app.include_router(decisions.router, prefix="/api/v1")
     app.include_router(reviews.router, prefix="/api/v1")

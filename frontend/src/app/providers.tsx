@@ -35,10 +35,8 @@ export function AppProviders({ children }: { children: ReactNode }) {
             dataProvider={aiosDataProvider}
             resources={[
               {
-                name: "watchlist",
-                list: "/watchlist",
-                create: "/watchlist",
-                edit: "/watchlist",
+                name: "dashboard",
+                list: "/dashboard",
               },
               {
                 name: "research-runs",

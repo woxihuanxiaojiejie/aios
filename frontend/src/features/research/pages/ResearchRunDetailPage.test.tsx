@@ -26,14 +26,28 @@ describe("ResearchRunDetailPage", () => {
     expect(screen.getAllByText("Decision").length).toBeGreaterThan(0);
     expect(screen.getByText("Trade Plan")).toBeInTheDocument();
     expect(screen.getByText("Quarterly update")).toBeInTheDocument();
+    expect(screen.getByText("0.85")).toBeInTheDocument();
+    expect(screen.getByText("hash")).toBeInTheDocument();
+    expect(screen.getByText("parsed")).toBeInTheDocument();
     expect(screen.getByText("technical_trend")).toBeInTheDocument();
     expect(screen.getAllByText(/market_sentiment/).length).toBeGreaterThan(0);
+    expect(screen.getByText("brain002")).toBeInTheDocument();
     expect(screen.getAllByText(/validation_error/).length).toBeGreaterThan(0);
+    expect(screen.getByText("Agent report cites evidence")).toBeInTheDocument();
     expect(screen.getByText("第一阶段：盲报")).toBeInTheDocument();
     expect(screen.getByText("第二阶段：讨论与修订")).toBeInTheDocument();
+    expect(screen.getByText("watch pending confirmation")).toBeInTheDocument();
+    expect(screen.getByText("risk is bounded")).toBeInTheDocument();
+    expect(screen.getByText(/da_123/)).toBeInTheDocument();
     expect(screen.getByText("buy")).toBeInTheDocument();
+    expect(screen.getByText("guidance improved")).toBeInTheDocument();
+    expect(screen.getByText("liquidity")).toBeInTheDocument();
+    expect(screen.getAllByText("dc_123").length).toBeGreaterThan(0);
     expect(screen.getByText("Simulated Execution")).toBeInTheDocument();
     expect(screen.getByText("sx_123")).toBeInTheDocument();
+    expect(screen.getAllByText("tp_123").length).toBeGreaterThan(0);
+    expect(screen.getByText("8.5")).toBeInTheDocument();
+    expect(screen.getByText("0.2")).toBeInTheDocument();
   });
 
   it("shows an explicit empty decision state without defaulting to no_trade", async () => {

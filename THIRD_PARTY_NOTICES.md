@@ -30,3 +30,14 @@ dependencies: React, React DOM, React Router, Refine, TanStack Query, Ant
 Design, Vite, Vitest, Testing Library, TypeScript, and ESLint. These packages
 remain consumed through `package.json` / `package-lock.json` under their
 upstream licenses. No new UI framework was introduced.
+
+## AIOS Results Home & Core Detail Completeness
+
+No third-party source files were copied into this repository for this milestone.
+
+The implementation reused current repository code plus existing npm
+dependencies: React, React DOM, React Router, Refine, TanStack Query, Ant
+Design, Vite, Vitest, Testing Library, TypeScript, and ESLint. No charting
+library was added. Previously listed but unused chart dependencies `echarts` and
+`lightweight-charts` were removed together with the unreferenced
+`CandlestickChart.tsx` component.

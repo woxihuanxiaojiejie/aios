@@ -16,6 +16,11 @@ Settlement, and idempotent business records. AKShare and BaoStock support are
 independent market-data providers that use the same `MarketDataAdapter` protocol
 to import A-share daily bars as `Evidence`.
 
+AIOS is not a professional行情 terminal. Use 同花顺 for行情、K 线、分时图、板块、
+资金流、市场热度、新闻和公告查看. Use AIOS for研究、证据、假设、讨论、决策、
+交易计划、模拟执行、结算、评估、复盘和 Learning Proposal. AIOS does not provide
+professional market charts.
+
 The HTTP API is currently intended only for local development and trusted
 networks. Do not expose it directly to the public internet.
 
@@ -114,6 +119,7 @@ Available routes:
 ```text
 GET  /health
 GET  /api/v1/health
+GET  /api/v1/dashboard/summary
 POST /api/v1/evidence
 GET  /api/v1/evidence
 GET  /api/v1/evidence/{evidence_id}
@@ -177,19 +183,32 @@ at 200.
 
 ### Research Frontend
 
-The frontend research center provides:
+The frontend AIOS results pages provide:
 
 ```text
+/dashboard       AIOS Results Home with summary, attention items, recent research, and recent settlements
 /research        persisted Research Run list
 /research/new    existing manual ResearchWorkbench
-/research/:runId persisted Research Run detail through Trade Plan
+/research/:runId persisted Research Run detail through downstream lifecycle links
+/executions      Simulated Execution explorer
+/executions/:executionId Simulated Execution detail
+/settlements     Settlement explorer
+/settlements/:settlementId Settlement detail
+/learning-proposals read-only pending Learning Proposals
 ```
+
+The root path `/` redirects to `/dashboard`.
 
 The list uses the existing Refine data provider and supports backend-backed
 pagination plus symbol, market, status, workflow, date, and sort query fields
 where the API can satisfy them. The detail page reads
 `GET /api/v1/research/runs/{run_id}/detail` and displays persisted Run,
-Evidence, Skill Reports, Hypothesis, Discussion, Decision, and Trade Plan data.
+Evidence, Skill Reports, Hypothesis, Discussion, Decision, Trade Plan,
+Simulated Execution, Settlement, Evaluation, Review, and Learning Proposal data.
+
+The Dashboard reads only `GET /api/v1/dashboard/summary`. It does not download
+all research, execution, settlement, or learning records to calculate its
+summary, and it does not render charts or market行情 widgets.
 
 Watchlist manual run results route to `/research/:runId` using the real
 `run.run_id` returned by the backend.

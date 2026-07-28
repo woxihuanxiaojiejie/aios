@@ -117,6 +117,8 @@ function EvidenceSection({ detail }: { detail: ResearchRunDetail }) {
     { title: "Evidence ID", dataIndex: "evidence_id", width: 190 },
     { title: "类型", dataIndex: "evidence_type", width: 120 },
     { title: "来源", dataIndex: "source", width: 150 },
+    { title: "质量", dataIndex: "reliability", width: 100 },
+    { title: "可信度", dataIndex: "credibility", width: 100, render: nullable },
     {
       title: "标题",
       dataIndex: "title",
@@ -134,6 +136,10 @@ function EvidenceSection({ detail }: { detail: ResearchRunDetail }) {
       width: 180,
       render: formatDateTime,
     },
+    { title: "关联标的", dataIndex: "symbols", width: 150, render: listText },
+    { title: "原始来源标识", dataIndex: "source_identifier", width: 170, render: nullable },
+    { title: "Content Hash", dataIndex: "content_hash", width: 180 },
+    { title: "处理状态", dataIndex: "processing_status", width: 120 },
     {
       title: "原始链接",
       dataIndex: "source_url",
@@ -185,9 +191,14 @@ function SkillReportsSection({ reports }: { reports: AgentReport[] }) {
                 <Descriptions.Item label="Skill 名称">{skillName(report.role)}</Descriptions.Item>
                 <Descriptions.Item label="状态"><StatusTag value={report.status} /></Descriptions.Item>
                 <Descriptions.Item label="结论或摘要">{report.summary}</Descriptions.Item>
+                <Descriptions.Item label="信号或方向">{report.stance}</Descriptions.Item>
                 <Descriptions.Item label="置信度">{formatPercent(report.confidence)}</Descriptions.Item>
                 <Descriptions.Item label="Evidence 引用">
                   {report.evidence_ids.join(", ") || "-"}
+                </Descriptions.Item>
+                <Descriptions.Item label="来源">{report.source}</Descriptions.Item>
+                <Descriptions.Item label="创建时间">
+                  {formatDateTime(report.created_at)}
                 </Descriptions.Item>
                 <Descriptions.Item label="失败原因">
                   {isReportFailure(report) ? report.raw_reference ?? report.summary : "-"}
@@ -219,6 +230,10 @@ function HypothesisSection({ hypotheses }: { hypotheses: Hypothesis[] }) {
         {hypotheses.map((hypothesis) => (
           <Descriptions key={hypothesis.hypothesis_id} bordered size="small" column={2}>
             <Descriptions.Item label="内容">{hypothesis.statement}</Descriptions.Item>
+            <Descriptions.Item label="假设来源">
+              {hypothesis.supporting_report_ids.join(", ") || "-"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Rationale">{hypothesis.rationale}</Descriptions.Item>
             <Descriptions.Item label="方向">{hypothesis.direction}</Descriptions.Item>
             <Descriptions.Item label="时间周期">{hypothesis.horizon_days} 天</Descriptions.Item>
             <Descriptions.Item label="支持证据">
@@ -229,6 +244,10 @@ function HypothesisSection({ hypotheses }: { hypotheses: Hypothesis[] }) {
               {formatPercent(hypothesis.confidence)}
             </Descriptions.Item>
             <Descriptions.Item label="修订状态"><StatusTag value={hypothesis.status} /></Descriptions.Item>
+            <Descriptions.Item label="关键条件">-</Descriptions.Item>
+            <Descriptions.Item label="预期时间范围">
+              {hypothesis.horizon_days} 天
+            </Descriptions.Item>
           </Descriptions>
         ))}
       </Space>
@@ -241,6 +260,7 @@ function DiscussionSection({ detail }: { detail: ResearchRunDetail }) {
   return (
     <Card className="tool-card" title="Discussion">
       <Tabs
+        defaultActiveKey="review"
         items={[
           {
             key: "blind",
@@ -283,6 +303,21 @@ function DiscussionSection({ detail }: { detail: ResearchRunDetail }) {
                   <Descriptions.Item label="最终总结">
                     {discussion.proposal?.thesis ?? "-"}
                   </Descriptions.Item>
+                  <Descriptions.Item label="Proposal">
+                    {discussion.proposal
+                      ? `${discussion.proposal.proposal_id}: ${discussion.proposal.conclusion}`
+                      : "-"}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Risk Review">
+                    {discussion.risk_review
+                      ? `${discussion.risk_review.risk_review_id}: ${discussion.risk_review.verdict}`
+                      : "-"}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Assembly">
+                    {discussion.assembly
+                      ? `${discussion.assembly.assembly_id}: ${discussion.assembly.conclusion}`
+                      : "-"}
+                  </Descriptions.Item>
                   <Descriptions.Item label="最终置信度">
                     {formatPercent(discussion.risk_review?.final_confidence)}
                   </Descriptions.Item>
@@ -313,6 +348,7 @@ function DecisionSection({
         />
       ) : (
         <Descriptions bordered size="small" column={2}>
+          <Descriptions.Item label="Decision ID">{decision.decision_id}</Descriptions.Item>
           <Descriptions.Item label="Decision">{decision.action}</Descriptions.Item>
           <Descriptions.Item label="置信度">{formatPercent(decision.confidence)}</Descriptions.Item>
           <Descriptions.Item label="时间周期">{decision.horizon}</Descriptions.Item>
@@ -323,6 +359,11 @@ function DecisionSection({
           </Descriptions.Item>
           <Descriptions.Item label="风险说明">{decision.risk_factors.join(", ") || "-"}</Descriptions.Item>
           <Descriptions.Item label="Evidence 引用">{decision.evidence_ids.join(", ")}</Descriptions.Item>
+          <Descriptions.Item label="no_trade 原因">
+            {[...decision.unavailable_fields, ...decision.downgrade_reasons].join(", ") || "-"}
+          </Descriptions.Item>
+          <Descriptions.Item label="状态"><StatusTag value={decision.status} /></Descriptions.Item>
+          <Descriptions.Item label="创建时间">{formatDateTime(decision.created_at)}</Descriptions.Item>
         </Descriptions>
       )}
     </Card>
@@ -336,15 +377,23 @@ function TradePlanSection({ tradePlan }: { tradePlan: TradePlan | null }) {
         <EmptyState description="暂无 Trade Plan" />
       ) : (
         <Descriptions bordered size="small" column={2}>
+          <Descriptions.Item label="Trade Plan ID">{tradePlan.trade_plan_id}</Descriptions.Item>
           <Descriptions.Item label="方向">{tradePlan.direction}</Descriptions.Item>
           <Descriptions.Item label="标的">{tradePlan.symbol}</Descriptions.Item>
           <Descriptions.Item label="入场计划">
             {tradePlan.planned_entry.join(", ") || "-"}
           </Descriptions.Item>
+          <Descriptions.Item label="Entry Price 或价格区间">
+            {tradePlan.target?.join(" - ") ?? "-"}
+          </Descriptions.Item>
           <Descriptions.Item label="风险条件">
             {tradePlan.invalidation_conditions.join(", ") || "-"}
           </Descriptions.Item>
           <Descriptions.Item label="目标周期">{tradePlan.horizon}</Descriptions.Item>
+          <Descriptions.Item label="Stop Loss">{tradePlan.stop_loss ?? "-"}</Descriptions.Item>
+          <Descriptions.Item label="Take Profit">
+            {tradePlan.target?.join(" - ") ?? "-"}
+          </Descriptions.Item>
           <Descriptions.Item label="失效条件">
             {tradePlan.invalidation_conditions.join(", ") || "-"}
           </Descriptions.Item>
@@ -352,6 +401,9 @@ function TradePlanSection({ tradePlan }: { tradePlan: TradePlan | null }) {
             {tradePlan.planned_position === null ? "-" : formatPercent(tradePlan.planned_position)}
           </Descriptions.Item>
           <Descriptions.Item label="状态"><StatusTag value={tradePlan.status} /></Descriptions.Item>
+          <Descriptions.Item label="Risk Budget">
+            {tradePlan.planned_position === null ? "-" : formatPercent(tradePlan.planned_position)}
+          </Descriptions.Item>
         </Descriptions>
       )}
     </Card>
@@ -381,6 +433,14 @@ function skillName(role: string) {
 
 function isReportFailure(report: AgentReport) {
   return Boolean(report.raw_reference?.toLowerCase().includes("error")) || report.confidence === 0;
+}
+
+function listText(values: string[]) {
+  return values.join(", ") || "-";
+}
+
+function nullable(value: unknown) {
+  return value ?? "-";
 }
 
 function errorMessage(error: unknown) {

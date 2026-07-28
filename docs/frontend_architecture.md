@@ -10,7 +10,6 @@ This document defines the long-term frontend architecture for AIOS.
 - TanStack Query
 - Ant Design
 - Ant Design Pro Components, used only when needed
-- ECharts
 - Controlled reuse of existing Vibe-Trading components
 
 ## Single Frontend Project
@@ -87,14 +86,15 @@ VITE_API_BASE_URL
 - Ant Design is the only primary UI component system.
 - Do not introduce Material UI, Chakra UI, Mantine, or shadcn/ui.
 - Do not copy Ant Design Pro in full.
-- ECharts remains a normal charting library.
-- Do not build a professional K-line terminal in the current phase.
+- Do not add charting libraries for AIOS result pages.
+- Do not build a professional K-line terminal, market行情大屏, fund-flow view,
+  sector heat map, or news feed in AIOS result pages.
 
 ## Vibe-Trading Reuse Rules
 
 - Do not copy the full Vibe-Trading frontend.
 - Only reviewed generic capabilities may be reused, such as Markdown, JSON
-  Viewer, ECharts, Run Status, SSE, Loading, Error, and Toast components.
+  Viewer, Run Status, SSE, Loading, Error, and Toast components.
 - Reused code must not depend on Vibe-Trading business routes, business models,
   or original APIs.
 - Every reused item must record its source, license, and modification history.

@@ -6,9 +6,9 @@ import { ErrorBoundary } from "./ErrorBoundary";
 import { AppLayout } from "./layout";
 import { AppProviders } from "./providers";
 
-const WatchlistPage = lazy(() =>
-  import("../features/watchlist/WatchlistPage").then((module) => ({
-    default: module.WatchlistPage,
+const DashboardPage = lazy(() =>
+  import("../features/dashboard/DashboardPage").then((module) => ({
+    default: module.DashboardPage,
   })),
 );
 const ResearchRunsPage = lazy(() =>
@@ -60,8 +60,8 @@ export function App() {
           <ErrorBoundary>
             <Suspense fallback={<LoadingState />}>
               <Routes>
-                <Route path="/" element={<Navigate to="/watchlist" replace />} />
-                <Route path="/watchlist" element={<WatchlistPage />} />
+                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/dashboard" element={<DashboardPage />} />
                 <Route path="/research" element={<ResearchRunsPage />} />
                 <Route path="/research/new" element={<ResearchNewPage />} />
                 <Route path="/research/:runId" element={<ResearchRunDetailPage />} />
@@ -70,7 +70,7 @@ export function App() {
                 <Route path="/settlements" element={<SettlementsPage />} />
                 <Route path="/settlements/:settlementId" element={<SettlementDetailPage />} />
                 <Route path="/learning-proposals" element={<LearningProposalsPage />} />
-                <Route path="*" element={<Navigate to="/watchlist" replace />} />
+                <Route path="*" element={<Navigate to="/dashboard" replace />} />
               </Routes>
             </Suspense>
           </ErrorBoundary>

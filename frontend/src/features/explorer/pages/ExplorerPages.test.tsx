@@ -51,6 +51,11 @@ describe("Execution and settlement explorer pages", () => {
     renderPage("/executions/sx_123");
 
     expect(await screen.findByText("Simulated Execution Detail")).toBeInTheDocument();
+    expect(screen.getAllByText("Trade Plan ID").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Decision ID").length).toBeGreaterThan(0);
+    expect(screen.getByText("Quantity")).toBeInTheDocument();
+    expect(screen.getByText("Market Data Source")).toBeInTheDocument();
+    expect(screen.getByText("fixture")).toBeInTheDocument();
     expect(screen.getByText("等待结算")).toBeInTheDocument();
     expect(screen.getByText("尚未生成 Evaluation")).toBeInTheDocument();
     expect(screen.getByText("尚未生成 Review")).toBeInTheDocument();
@@ -62,6 +67,12 @@ describe("Execution and settlement explorer pages", () => {
 
     expect(await screen.findByText("Settlement Detail")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Execution" })).toBeInTheDocument();
+    expect(screen.getByText("Direction Accuracy")).toBeInTheDocument();
+    expect(screen.getByText("Return Evaluation")).toBeInTheDocument();
+    expect(screen.getByText("Risk Evaluation")).toBeInTheDocument();
+    expect(screen.getByText("fixed deterministic execution evaluation")).toBeInTheDocument();
+    expect(screen.getByText("Success Reasons")).toBeInTheDocument();
+    expect(screen.getByText("Reference IDs")).toBeInTheDocument();
     expect(screen.getByText("lr_123")).toBeInTheDocument();
   });
 
@@ -69,6 +80,10 @@ describe("Execution and settlement explorer pages", () => {
     renderPage("/learning-proposals");
 
     expect(await screen.findByText("lr_123")).toBeInTheDocument();
+    expect(screen.getAllByText("Current Value").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Proposed Value").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Expected Effect").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Risks").length).toBeGreaterThan(0);
     expect(screen.queryByText("lr_approved")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /approve|reject|apply/i })).not.toBeInTheDocument();
   });

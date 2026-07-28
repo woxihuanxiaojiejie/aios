@@ -19,6 +19,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
           selectedKeys={[selectedKey]}
           className="aios-nav"
           items={[
+            { key: "/dashboard", label: <Link to="/dashboard">Dashboard</Link> },
             { key: "/research", label: <Link to="/research">Research</Link> },
             { key: "/executions", label: <Link to="/executions">Executions</Link> },
             { key: "/settlements", label: <Link to="/settlements">Settlements</Link> },
@@ -35,9 +36,10 @@ export function AppLayout({ children }: { children: ReactNode }) {
 }
 
 function selectedNavKey(pathname: string) {
+  if (pathname.startsWith("/dashboard")) return "/dashboard";
   if (pathname.startsWith("/executions")) return "/executions";
   if (pathname.startsWith("/settlements")) return "/settlements";
   if (pathname.startsWith("/learning-proposals")) return "/learning-proposals";
   if (pathname.startsWith("/research")) return "/research";
-  return "/research";
+  return "/dashboard";
 }
