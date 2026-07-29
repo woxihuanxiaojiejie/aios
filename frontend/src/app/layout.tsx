@@ -19,15 +19,12 @@ export function AppLayout({ children }: { children: ReactNode }) {
           selectedKeys={[selectedKey]}
           className="aios-nav"
           items={[
-            { key: "/dashboard", label: <Link to="/dashboard">Dashboard</Link> },
-            { key: "/research", label: <Link to="/research">Research</Link> },
-            { key: "/executions", label: <Link to="/executions">Executions</Link> },
-            { key: "/settlements", label: <Link to="/settlements">Settlements</Link> },
-            {
-              key: "/learning-proposals",
-              label: <Link to="/learning-proposals">Learning Proposals</Link>,
-            },
-            { key: "/system", label: <Link to="/system">System</Link> },
+            { key: "/dashboard", label: <Link to="/dashboard">首页</Link> },
+            { key: "/research", label: <Link to="/research">研究</Link> },
+            { key: "/decisions", label: <Link to="/decisions">决策</Link> },
+            { key: "/reviews", label: <Link to="/reviews">复盘</Link> },
+            { key: "/learning", label: <Link to="/learning">学习</Link> },
+            { key: "/system", label: <Link to="/system">系统</Link> },
           ]}
         />
       </Header>
@@ -38,9 +35,11 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
 function selectedNavKey(pathname: string) {
   if (pathname.startsWith("/dashboard")) return "/dashboard";
-  if (pathname.startsWith("/executions")) return "/executions";
-  if (pathname.startsWith("/settlements")) return "/settlements";
-  if (pathname.startsWith("/learning-proposals")) return "/learning-proposals";
+  if (pathname.startsWith("/decisions")) return "/decisions";
+  if (pathname.startsWith("/reviews")) return "/reviews";
+  if (pathname.startsWith("/executions")) return "/reviews";
+  if (pathname.startsWith("/settlements")) return "/reviews";
+  if (pathname.startsWith("/learning")) return "/learning";
   if (pathname.startsWith("/system")) return "/system";
   if (pathname.startsWith("/research")) return "/research";
   return "/dashboard";

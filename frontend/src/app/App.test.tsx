@@ -20,7 +20,7 @@ describe("App routing", () => {
 
     await waitFor(() => expect(window.location.pathname).toBe("/dashboard"));
     expect(
-      await screen.findByRole("heading", { name: "AIOS Results Summary" }),
+      await screen.findByRole("heading", { name: "AIOS 工作台首页" }),
     ).toBeInTheDocument();
     expect(screen.queryByText("AIOS 人工验收工作台")).not.toBeInTheDocument();
   });
@@ -30,17 +30,19 @@ describe("App routing", () => {
 
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "AIOS Results Summary" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "AIOS 工作台首页" }),
+    ).toBeInTheDocument();
     expect(screen.queryByText("新增股票")).not.toBeInTheDocument();
     expect(screen.queryByText("创建证据")).not.toBeInTheDocument();
     const navItems = screen.getAllByRole("menuitem").map((item) => item.textContent);
     expect(navItems).toEqual([
-      "Dashboard",
-      "Research",
-      "Executions",
-      "Settlements",
-      "Learning Proposals",
-      "System",
+      "首页",
+      "研究",
+      "决策",
+      "复盘",
+      "学习",
+      "系统",
     ]);
   });
 
@@ -91,7 +93,7 @@ describe("App routing", () => {
 
     expect(await screen.findByRole("heading", { name: "System Runtime Status" })).toBeInTheDocument();
     const navItems = screen.getAllByRole("menuitem").map((item) => item.textContent);
-    expect(navItems.at(-1)).toBe("System");
+    expect(navItems.at(-1)).toBe("系统");
   });
 });
 

@@ -14,59 +14,59 @@ describe("DashboardPage", () => {
     vi.stubGlobal("fetch", vi.fn(apiResponse));
   });
 
-  it("renders summary counts, attention rows, recent results, and real detail links", async () => {
+  it("renders the Chinese business home instead of the manual workbench", async () => {
     renderPage();
 
-    expect(await screen.findByRole("heading", { name: "AIOS Results Summary" })).toBeInTheDocument();
-    expect(screen.getByText("研究、决策、模拟执行、结算和学习结果总览")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "AIOS 工作台首页" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("今日待办")).toBeInTheDocument();
+    expect(screen.getByText("最新研究结果")).toBeInTheDocument();
+    expect(screen.getByText("待处理异常")).toBeInTheDocument();
+    expect(screen.getByText("最近复盘结果")).toBeInTheDocument();
     expect(screen.queryByText("AIOS 人工验收工作台")).not.toBeInTheDocument();
     expect(screen.queryByText("新增股票")).not.toBeInTheDocument();
     expect(screen.queryByText("创建证据")).not.toBeInTheDocument();
-    expect(screen.getByText("Research Runs")).toBeInTheDocument();
-    expect(screen.getByText("Completed Research")).toBeInTheDocument();
-    expect(screen.getByText("Simulated Executions")).toBeInTheDocument();
-    expect(screen.getByText("Settlements")).toBeInTheDocument();
-    expect(screen.getByText("Pending Learning Proposals")).toBeInTheDocument();
-    expect(screen.getByText("Failed / Resumable Research")).toBeInTheDocument();
-    expect(screen.getByText("12")).toBeInTheDocument();
-    expect(screen.getByText("missing_trade_plan")).toBeInTheDocument();
-    expect(screen.getByText("Decision 已生成")).toBeInTheDocument();
-    expect(screen.getByText("Trade Plan")).toBeInTheDocument();
-    expect(screen.getAllByText("buy").length).toBeGreaterThan(0);
-    expect(screen.getByText("fixed deterministic execution evaluation")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open System Status" })).toHaveAttribute(
+    expect(screen.queryByText("Research Runs")).not.toBeInTheDocument();
+    expect(screen.getByText("等待交易计划")).toBeInTheDocument();
+    expect(screen.getAllByText("买入").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("结果结算")[0]).toBeInTheDocument();
+    expect(screen.getByText("固定验收复盘摘要")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "进入系统运行状态" })).toHaveAttribute(
       "href",
       "/system",
     );
-    expect(screen.getAllByRole("link", { name: "run_123" })[0]).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "查看研究" })).toHaveAttribute(
       "href",
       "/research/run_123",
     );
-    expect(screen.getByRole("link", { name: "oc_123" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "查看复盘" })).toHaveAttribute(
       "href",
       "/settlements/oc_123",
     );
     expect(document.body.textContent).not.toMatch(/echarts|lightweight-charts/i);
   });
 
-  it("renders empty and error states without manufacturing zeros for null performance", async () => {
+  it("renders empty and error states in Chinese", async () => {
     mode = "empty";
     const empty = renderPage();
-    expect(await screen.findAllByText("暂无需要处理的事项")).toHaveLength(1);
+    expect(await screen.findByText("暂无待处理异常")).toBeInTheDocument();
     expect(screen.getByText("暂无最近研究结果")).toBeInTheDocument();
-    expect(screen.getByText("暂无最近结算结果")).toBeInTheDocument();
+    expect(screen.getByText("暂无最近复盘结果")).toBeInTheDocument();
     empty.unmount();
 
     mode = "error";
     renderPage();
-    expect(await screen.findByText("Dashboard failed")).toBeInTheDocument();
+    expect(
+      await screen.findByText("请求失败，请稍后重试或检查系统状态。"),
+    ).toBeInTheDocument();
   });
 
   it("renders a loading state while the summary is pending", () => {
     mode = "loading";
     renderPage();
 
-    expect(document.querySelector(".ant-skeleton")).toBeInTheDocument();
+    expect(screen.getByText("正在加载...")).toBeInTheDocument();
   });
 });
 
@@ -89,10 +89,20 @@ function renderPage() {
 
 async function apiResponse(input: RequestInfo | URL) {
   const url = String(input);
+  if (url.endsWith("/system/status")) return json(systemStatus());
   if (!url.endsWith("/dashboard/summary")) return json({});
   if (mode === "loading") return new Promise(() => undefined);
   if (mode === "error") {
-    return json({ error: { code: "request_failed", message: "Dashboard failed", details: {} } }, 500);
+    return json(
+      {
+        error: {
+          code: "request_failed",
+          message: "Dashboard failed",
+          details: {},
+        },
+      },
+      500,
+    );
   }
   if (mode === "empty") return json(emptySummary());
   return json({
@@ -115,7 +125,7 @@ async function apiResponse(input: RequestInfo | URL) {
         type: "missing_trade_plan",
         symbol: "600519",
         market: "CN",
-        current_stage: "Decision 已生成",
+        current_stage: "Decision",
         missing_stage: "Trade Plan",
         created_at: "2026-07-28T08:00:00Z",
         detail_path: "/research/run_123",
@@ -146,7 +156,7 @@ async function apiResponse(input: RequestInfo | URL) {
         exit_price: "10.50",
         return_rate: "0.049",
         pnl: "0.01225",
-        evaluation_summary: "fixed deterministic execution evaluation",
+        evaluation_summary: "固定验收复盘摘要",
         review_status: "profit",
       },
     ],
@@ -172,6 +182,46 @@ function emptySummary() {
     attention_required: [],
     recent_research: [],
     recent_settlements: [],
+  };
+}
+
+function systemStatus() {
+  return {
+    generated_at: "2026-07-28T08:00:00Z",
+    overall_status: "healthy",
+    application: {
+      status: "healthy",
+      name: "AIOS",
+      version: "0.1.0",
+      commit: null,
+      environment: null,
+      started_at: null,
+      checked_at: "2026-07-28T08:00:00Z",
+      message: null,
+    },
+    database: {
+      status: "healthy",
+      backend: "in_memory",
+      checked_at: "2026-07-28T08:00:00Z",
+      latency_ms: 0,
+      message: null,
+    },
+    scheduler: {
+      status: "healthy",
+      running: true,
+      last_heartbeat_at: "2026-07-28T08:00:00Z",
+      heartbeat_age_seconds: 1,
+      message: null,
+    },
+    jobs: {},
+    queues: {
+      research_due: 1,
+      settlement_due: 2,
+      failed_research_runs: 1,
+      resumable_research_runs: 1,
+    },
+    providers: [],
+    issues: [],
   };
 }
 

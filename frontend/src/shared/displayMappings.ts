@@ -60,6 +60,7 @@ const STATUS_NAMES: Record<string, string> = {
 };
 
 const RESEARCH_STAGE_NAMES: Record<string, string> = {
+  research: "研究",
   session: "研究会话",
   evidence: "证据材料",
   vibe_research: "外部研究",
@@ -69,6 +70,13 @@ const RESEARCH_STAGE_NAMES: Record<string, string> = {
   proposal: "讨论修订",
   risk_review: "反方审查",
   decision: "最终决策",
+  trade_plan: "交易计划",
+  simulated_execution: "模拟执行",
+  settlement: "结果结算",
+  evaluation: "评价",
+  review: "复盘",
+  learning_proposal: "学习建议",
+  resume: "恢复研究",
   completed: "已完成",
   failed: "失败",
   collecting_evidence: "采集证据",
@@ -130,6 +138,17 @@ const PROVIDER_STATUS_NAMES: Record<string, string> = {
   unknown: "未知",
 };
 
+const ATTENTION_TYPE_NAMES: Record<string, string> = {
+  research_run_failed: "研究失败",
+  research_run_needs_resume: "研究可恢复",
+  missing_trade_plan: "等待交易计划",
+  missing_simulated_execution: "等待模拟执行",
+  missing_settlement: "等待结算",
+  missing_evaluation: "等待评价",
+  missing_review: "等待复盘",
+  missing_learning_proposal: "等待学习建议",
+};
+
 export function displayPageName(value: DisplayValue) {
   return displayFrom(PAGE_NAMES, value, "未知页面");
 }
@@ -166,6 +185,10 @@ export function displayProviderStatus(value: DisplayValue) {
   return displayFrom(PROVIDER_STATUS_NAMES, value);
 }
 
+export function displayAttentionType(value: DisplayValue) {
+  return displayFrom(ATTENTION_TYPE_NAMES, value);
+}
+
 export function technicalValue(value: DisplayValue) {
   return value === null || value === undefined || value === "" ? "-" : String(value);
 }
@@ -176,5 +199,7 @@ function displayFrom(
   unknown = "未知状态",
 ) {
   if (value === null || value === undefined || value === "") return "-";
-  return mapping[String(value)] ?? unknown;
+  const raw = String(value);
+  const normalized = raw.trim().toLowerCase().replaceAll(" ", "_").replaceAll("-", "_");
+  return mapping[raw] ?? mapping[normalized] ?? unknown;
 }
