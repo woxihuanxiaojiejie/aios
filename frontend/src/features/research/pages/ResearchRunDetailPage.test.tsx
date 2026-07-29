@@ -18,43 +18,43 @@ describe("ResearchRunDetailPage", () => {
   it("renders persisted research chain sections and local skill failure", async () => {
     renderPage();
 
-    expect(await screen.findByText("Research Run 概览")).toBeInTheDocument();
-    expect(screen.getByText("Evidence")).toBeInTheDocument();
-    expect(screen.getByText("Skill Reports")).toBeInTheDocument();
-    expect(screen.getByText("Hypothesis")).toBeInTheDocument();
-    expect(screen.getByText("Discussion")).toBeInTheDocument();
-    expect(screen.getAllByText("Decision").length).toBeGreaterThan(0);
-    expect(screen.getByText("Trade Plan")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "研究详情" })).toBeInTheDocument();
+    expect(screen.getByText("1. 研究概况")).toBeInTheDocument();
+    expect(screen.getByText("2. 触发原因与初始假设")).toBeInTheDocument();
+    expect(screen.getByText("3. 证据材料")).toBeInTheDocument();
+    expect(screen.getByText("4. 五项独立分析")).toBeInTheDocument();
+    expect(screen.getByText("5. 冲突识别")).toBeInTheDocument();
+    expect(screen.getByText("6. 证据复核")).toBeInTheDocument();
+    expect(screen.getByText("7. 反方审查")).toBeInTheDocument();
+    expect(screen.getByText("8. 讨论修订")).toBeInTheDocument();
+    expect(screen.getByText("9. 最终决策")).toBeInTheDocument();
+    expect(screen.getByText("10. 交易计划")).toBeInTheDocument();
+    expect(screen.getByText("11. 模拟执行")).toBeInTheDocument();
+    expect(screen.getByText("12. 结果结算")).toBeInTheDocument();
+    expect(screen.getByText("13. 评价与复盘")).toBeInTheDocument();
+    expect(screen.getByText("14. 学习建议")).toBeInTheDocument();
     expect(screen.getByText("Quarterly update")).toBeInTheDocument();
-    expect(screen.getByText("0.85")).toBeInTheDocument();
-    expect(screen.getByText("hash")).toBeInTheDocument();
-    expect(screen.getByText("parsed")).toBeInTheDocument();
-    expect(screen.getByText("technical_trend")).toBeInTheDocument();
-    expect(screen.getAllByText(/market_sentiment/).length).toBeGreaterThan(0);
-    expect(screen.getByText("brain002")).toBeInTheDocument();
+    expect(screen.getByText("技术趋势分析")).toBeInTheDocument();
+    expect(screen.getByText("市场情绪分析")).toBeInTheDocument();
     expect(screen.getAllByText(/validation_error/).length).toBeGreaterThan(0);
     expect(screen.getByText("Agent report cites evidence")).toBeInTheDocument();
-    expect(screen.getByText("第一阶段：盲报")).toBeInTheDocument();
-    expect(screen.getByText("第二阶段：讨论与修订")).toBeInTheDocument();
+    expect(screen.getByText("技能观点冲突")).toBeInTheDocument();
+    expect(screen.getByText("证据已确认")).toBeInTheDocument();
+    expect(screen.getByText("反方提示流动性风险")).toBeInTheDocument();
     expect(screen.getByText("watch pending confirmation")).toBeInTheDocument();
-    expect(screen.getByText("risk is bounded")).toBeInTheDocument();
-    expect(screen.getByText(/da_123/)).toBeInTheDocument();
-    expect(screen.getByText("buy")).toBeInTheDocument();
+    expect(screen.getAllByText("买入").length).toBeGreaterThan(0);
     expect(screen.getByText("guidance improved")).toBeInTheDocument();
-    expect(screen.getByText("liquidity")).toBeInTheDocument();
-    expect(screen.getAllByText("dc_123").length).toBeGreaterThan(0);
-    expect(screen.getByText("Simulated Execution")).toBeInTheDocument();
-    expect(screen.getByText("sx_123")).toBeInTheDocument();
-    expect(screen.getAllByText("tp_123").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("liquidity").length).toBeGreaterThan(0);
     expect(screen.getByText("8.5")).toBeInTheDocument();
-    expect(screen.getByText("0.2")).toBeInTheDocument();
+    expect(screen.getAllByText("20%").length).toBeGreaterThan(0);
   });
 
   it("shows an explicit empty decision state without defaulting to no_trade", async () => {
     mode = "no-decision";
     renderPage();
 
-    expect(await screen.findByText("Decision 尚未生成")).toBeInTheDocument();
+    expect(await screen.findByText("该次研究未产生最终决策的结构化记录。"))
+      .toBeInTheDocument();
     expect(screen.queryByText("no_trade")).not.toBeInTheDocument();
   });
 
@@ -62,7 +62,8 @@ describe("ResearchRunDetailPage", () => {
     mode = "not-found";
     renderPage();
 
-    expect(await screen.findByText("The requested record was not found.")).toBeInTheDocument();
+    expect(await screen.findByText("没有找到对应记录，可能已被删除或当前环境数据不一致。"))
+      .toBeInTheDocument();
   });
 });
 
@@ -202,6 +203,103 @@ function detailFixture(): ResearchRunDetail {
         updated_at: "2026-07-28T08:01:00Z",
       },
     ],
+    analysis_task: {
+      task_id: "at_123",
+      symbol: "600519",
+      market: "CN",
+      asset_type: "stock",
+      horizon: "3d",
+      as_of: "2026-07-28T08:00:00Z",
+      evidence_ids: ["ev_123"],
+      user_constraints: {},
+      requested_skill_ids: [
+        "technical_trend",
+        "sector_strength",
+        "policy_impact",
+        "announcement_risk",
+        "market_sentiment",
+      ],
+      created_at: "2026-07-28T08:00:00Z",
+    },
+    skill_executions: [
+      {
+        execution_id: "se_technical",
+        task_id: "at_123",
+        skill_id: "technical_trend",
+        skill_version: "1",
+        started_at: "2026-07-28T08:01:00Z",
+        finished_at: "2026-07-28T08:01:10Z",
+        status: "succeeded",
+        provider: "test",
+        model: "deterministic",
+        prompt_version: null,
+        latency_ms: 10,
+        retry_count: 0,
+        error: null,
+      },
+      {
+        execution_id: "se_sentiment",
+        task_id: "at_123",
+        skill_id: "market_sentiment",
+        skill_version: "1",
+        started_at: "2026-07-28T08:01:00Z",
+        finished_at: "2026-07-28T08:01:10Z",
+        status: "failed",
+        provider: "test",
+        model: "deterministic",
+        prompt_version: null,
+        latency_ms: 10,
+        retry_count: 0,
+        error: "validation_error",
+      },
+    ],
+    skill_results: [
+      {
+        result_id: "sr_technical",
+        execution_id: "se_technical",
+        skill_id: "technical_trend",
+        skill_version: "1",
+        conclusion: "趋势仍然支持上涨",
+        direction: "bullish",
+        confidence: 0.7,
+        supporting_evidence_ids: ["ev_123"],
+        contradicting_evidence_ids: [],
+        assumptions: ["成交维持"],
+        risk_factors: ["liquidity"],
+        invalid_conditions: ["跌破止损"],
+        missing_information: ["行业确认"],
+        reasoning_summary: "技术结构改善",
+        raw_output: { source: "deterministic" },
+        created_at: "2026-07-28T08:01:20Z",
+      },
+    ],
+    discussion_result: {
+      discussion_result_id: "dr_123",
+      discussion_execution_id: "de_123",
+      task_id: "at_123",
+      skill_result_ids: ["sr_technical"],
+      conflicts: [{ summary: "技能观点冲突" }],
+      evidence_reviews: [{ summary: "证据已确认" }],
+      counter_arguments: [{ summary: "反方提示流动性风险" }],
+      revision_suggestions: [{ summary: "提高止损纪律" }],
+      discussion_summary: "watch pending confirmation",
+      discussion_confidence: 0.66,
+      created_at: "2026-07-28T08:03:00Z",
+    },
+    decision_result: {
+      decision_result_id: "dcr_123",
+      decision_execution_id: "dce_123",
+      discussion_result_id: "dr_123",
+      action: "buy",
+      direction: "bullish",
+      confidence: 0.72,
+      rationale: "guidance improved",
+      supporting_reasons: [{ summary: "证据和趋势同时支持" }],
+      risk_factors: [{ summary: "liquidity" }],
+      rejected_directions: [],
+      invalidation_conditions: ["policy reversal"],
+      created_at: "2026-07-28T08:04:00Z",
+    },
     discussion: {
       debates: [
         {

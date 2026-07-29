@@ -23,13 +23,16 @@ describe("ResearchRunsPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    expect(await screen.findByText("run_1234567890")).toBeInTheDocument();
-    expect(screen.getByText("600519")).toBeInTheDocument();
-    expect(screen.getByText("buy")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "研究" })).toBeInTheDocument();
+    expect(await screen.findByText("600519")).toBeInTheDocument();
+    expect(screen.getByText("买入")).toBeInTheDocument();
+    expect(screen.getAllByText("研究流程").length).toBeGreaterThan(0);
 
-    const row = screen.getByText("run_1234567890").closest("tr");
+    const row = (await screen.findByText("600519")).closest("tr");
     expect(row).not.toBeNull();
-    await user.click(within(row as HTMLTableRowElement).getByRole("button", { name: "详情" }));
+    await user.click(
+      within(row as HTMLTableRowElement).getByRole("button", { name: "查看详情" }),
+    );
 
     await waitFor(() => expect(screen.getByTestId("detail-route")).toHaveTextContent("run_1234567890"));
   });
@@ -38,14 +41,16 @@ describe("ResearchRunsPage", () => {
     mode = "empty";
     renderPage();
 
-    expect(await screen.findByText("暂无 Research Run")).toBeInTheDocument();
+    expect(await screen.findByText("暂无研究记录")).toBeInTheDocument();
   });
 
   it("shows API error state", async () => {
     mode = "error";
     renderPage("/research?symbol=ERR");
 
-    expect(await screen.findByText(/Backend request failed/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText("请求失败，请稍后重试或检查系统状态。"),
+    ).toBeInTheDocument();
   });
 
   it("keeps filter and pagination state in the URL", async () => {

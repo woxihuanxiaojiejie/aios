@@ -1,124 +1,177 @@
-import {
-  Alert,
-  Button,
-  Card,
-  Collapse,
-  Descriptions,
-  Space,
-  Table,
-  Tabs,
-  Timeline,
-  Typography,
-} from "antd";
+import { Alert, Button, Card, Descriptions, Space, Table, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { Link, useParams } from "react-router-dom";
 
-import {
-  EmptyState,
-  ErrorState,
-  LoadingState,
-  StatusTag,
-  formatDateTime,
-  formatPercent,
-} from "../../../shared/researchDisplay";
-import { ApiError } from "../../../infrastructure/api/client";
-import { DownstreamSections } from "../../explorer/pages/common";
-import { useResearchRunDetail } from "../hooks";
-import type { ResearchRunDetail } from "../types";
 import type {
-  AgentReport,
   Decision,
+  Evaluation,
   Evidence,
-  Hypothesis,
+  Learning,
+  Outcome,
+  Review,
+  SimulatedExecution,
   TradePlan,
 } from "../../../infrastructure/api/research";
+import {
+  BusinessStatusTag,
+  CopyableId,
+  EmptyBusinessState,
+  LongText,
+  TechnicalDetails,
+  UserReadableError,
+} from "../../../shared/businessComponents";
+import {
+  displayAction,
+  displayDirection,
+  displayLearningType,
+  displayResearchStage,
+  displayStatus,
+  displayTriggerMethod,
+} from "../../../shared/displayMappings";
+import {
+  formatBoolean,
+  formatDateTime,
+  formatPercent,
+  formatValue,
+} from "../../../shared/formatters";
+import { useResearchRunDetail } from "../hooks";
+import type { ResearchRunDetail } from "../types";
+
+const SKILL_ORDER = [
+  { key: "technical_trend", name: "技术趋势分析" },
+  { key: "sector_strength", name: "板块强度分析" },
+  { key: "policy_impact", name: "政策影响分析" },
+  { key: "announcement_risk", name: "公告风险分析" },
+  { key: "market_sentiment", name: "市场情绪分析" },
+] as const;
 
 export function ResearchRunDetailPage() {
   const { runId } = useParams();
   const detail = useResearchRunDetail(runId);
 
-  if (detail.isLoading) return <LoadingState />;
-  if (detail.error) return <ErrorState message={errorMessage(detail.error)} />;
-  if (!detail.data) return <EmptyState description="Research Run 不存在" />;
+  if (detail.isLoading) return <Typography.Text>正在加载...</Typography.Text>;
+  if (detail.error) return <UserReadableError error={detail.error} />;
+  if (!detail.data) return <EmptyBusinessState description="没有找到这次研究" />;
 
   return (
     <section className="research-detail-page">
       <div className="page-heading">
         <div>
-          <Typography.Title level={2}>Research Run 详情</Typography.Title>
-          <Typography.Text copyable={{ text: detail.data.run.run_id }} type="secondary">
-            {detail.data.run.run_id}
+          <Typography.Title level={2}>研究详情</Typography.Title>
+          <Typography.Text type="secondary">
+            {businessSubject(detail.data)} 的完整 AIOS 闭环记录
           </Typography.Text>
         </div>
         <Space>
           <Link to="/research">
-            <Button>返回列表</Button>
+            <Button>返回研究列表</Button>
           </Link>
           <Link to="/research/new">
-            <Button type="primary">发起研究</Button>
+            <Button type="primary">发起人工研究</Button>
           </Link>
         </Space>
       </div>
-      <ResearchRunOverview detail={detail.data} />
-      <EvidenceSection detail={detail.data} />
-      <SkillReportsSection reports={detail.data.skill_reports} />
-      <HypothesisSection hypotheses={detail.data.hypotheses} />
-      <DiscussionSection detail={detail.data} />
-      <DecisionSection decision={detail.data.decision} runStatus={detail.data.run.status} />
-      <TradePlanSection tradePlan={detail.data.trade_plan} />
-      <DownstreamSections
-        detail={{
-          research_run: detail.data.run,
-          research_session: detail.data.session,
-          decision: detail.data.decision,
-          trade_plan: detail.data.trade_plan,
-          simulated_execution: detail.data.simulated_execution,
-          settlement: detail.data.settlement,
-          evaluation: detail.data.evaluation,
-          review: detail.data.review,
-          learning_proposals: detail.data.learning_proposals,
-        }}
-      />
+
+      <Space orientation="vertical" className="full-width" size="middle">
+        <OverviewSection detail={detail.data} />
+        <TriggerHypothesisSection detail={detail.data} />
+        <EvidenceSection detail={detail.data} />
+        <SkillAnalysisSection detail={detail.data} />
+        <ConflictSection detail={detail.data} />
+        <EvidenceReviewSection detail={detail.data} />
+        <CounterReviewSection detail={detail.data} />
+        <RevisionSection detail={detail.data} />
+        <FinalDecisionSection decision={detail.data.decision} />
+        <TradePlanSection tradePlan={detail.data.trade_plan} />
+        <ExecutionSection execution={detail.data.simulated_execution} />
+        <SettlementSection settlement={detail.data.settlement} />
+        <EvaluationReviewSection
+          evaluation={detail.data.evaluation}
+          review={detail.data.review}
+          settlement={detail.data.settlement}
+        />
+        <LearningSection learnings={detail.data.learning_proposals} />
+      </Space>
     </section>
   );
 }
 
-function ResearchRunOverview({ detail }: { detail: ResearchRunDetail }) {
+function OverviewSection({ detail }: { detail: ResearchRunDetail }) {
   const run = detail.run;
-  const market = detail.watchlist_item?.market ?? detail.session?.scope.market ?? "-";
+  const session = detail.session;
   return (
-    <Card className="tool-card" title="Research Run 概览">
+    <Card className="tool-card" title="1. 研究概况">
       <Descriptions bordered column={{ xs: 1, sm: 2, lg: 3 }} size="small">
-        <Descriptions.Item label="Run ID">{run.run_id}</Descriptions.Item>
-        <Descriptions.Item label="股票代码">{run.symbol ?? "-"}</Descriptions.Item>
-        <Descriptions.Item label="市场">{market}</Descriptions.Item>
-        <Descriptions.Item label="状态"><StatusTag value={run.status} /></Descriptions.Item>
-        <Descriptions.Item label="触发方式">
-          {String(run.input_params.trigger_method ?? run.workflow)}
+        <Descriptions.Item label="股票">{businessSubject(detail)}</Descriptions.Item>
+        <Descriptions.Item label="市场">
+          {detail.watchlist_item?.market ?? session?.scope.market ?? "-"}
         </Descriptions.Item>
-        <Descriptions.Item label="Workflow">{run.workflow}</Descriptions.Item>
-        <Descriptions.Item label="创建时间">{formatDateTime(run.created_at)}</Descriptions.Item>
-        <Descriptions.Item label="开始时间">{formatDateTime(run.created_at)}</Descriptions.Item>
-        <Descriptions.Item label="完成时间">{formatDateTime(run.finished_at)}</Descriptions.Item>
-        <Descriptions.Item label="当前阶段">{run.current_stage}</Descriptions.Item>
-        <Descriptions.Item label="失败阶段">{run.failed_stage ?? "-"}</Descriptions.Item>
-        <Descriptions.Item label="错误信息">{run.error ?? "-"}</Descriptions.Item>
-        <Descriptions.Item label="Provider / Model">
-          {[run.input_params.provider, run.input_params.model].filter(Boolean).join(" / ") || "-"}
+        <Descriptions.Item label="当前状态">
+          <BusinessStatusTag value={run.status} />
+        </Descriptions.Item>
+        <Descriptions.Item label="当前阶段">
+          {displayResearchStage(run.current_stage)}
+        </Descriptions.Item>
+        <Descriptions.Item label="研究时间">
+          {formatDateTime(run.created_at)} 至 {formatDateTime(run.finished_at)}
+        </Descriptions.Item>
+        <Descriptions.Item label="研究周期">{researchHorizon(detail)}</Descriptions.Item>
+        <Descriptions.Item label="触发方式">
+          {displayTriggerMethod(triggerMethod(detail))}
+        </Descriptions.Item>
+        <Descriptions.Item label="失败原因">
+          {run.error_type || run.error ? displayStatus(run.error_type) : "-"}
         </Descriptions.Item>
       </Descriptions>
+      <TechnicalDetails
+        data={{
+          run_id: run.run_id,
+          research_session_id: session?.research_session_id ?? null,
+          watchlist_item_id: run.watchlist_item_id,
+          workflow: run.workflow,
+          raw_status: run.status,
+          input_params: run.input_params,
+          error: run.error,
+        }}
+      />
+    </Card>
+  );
+}
+
+function TriggerHypothesisSection({ detail }: { detail: ResearchRunDetail }) {
+  const hypothesis = detail.hypotheses[0] ?? null;
+  return (
+    <Card className="tool-card" title="2. 触发原因与初始假设">
+      <Descriptions bordered size="small" column={2}>
+        <Descriptions.Item label="触发来源">
+          {triggerReason(detail) ?? "该次研究未记录触发原因。"}
+        </Descriptions.Item>
+        <Descriptions.Item label="假设来源">
+          {hypothesis?.supporting_report_ids.join("、") ||
+            detail.analysis_task?.task_id ||
+            "未记录"}
+        </Descriptions.Item>
+        <Descriptions.Item label="初始假设正文">
+          <LongText text={hypothesis?.statement ?? initialHypothesis(detail)} />
+        </Descriptions.Item>
+        <Descriptions.Item label="假设待验证条件">
+          <LongText text={hypothesis?.rationale ?? "该次研究未记录待验证条件。"} />
+        </Descriptions.Item>
+        <Descriptions.Item label="方向">
+          {displayDirection(hypothesis?.direction)}
+        </Descriptions.Item>
+        <Descriptions.Item label="置信度">
+          {formatPercent(hypothesis?.confidence)}
+        </Descriptions.Item>
+      </Descriptions>
+      {!hypothesis ? <MissingStage name="初始假设" /> : null}
     </Card>
   );
 }
 
 function EvidenceSection({ detail }: { detail: ResearchRunDetail }) {
-  const referencedBy = evidenceReferences(detail.skill_reports);
   const columns: ColumnsType<Evidence> = [
-    { title: "Evidence ID", dataIndex: "evidence_id", width: 190 },
-    { title: "类型", dataIndex: "evidence_type", width: 120 },
-    { title: "来源", dataIndex: "source", width: 150 },
-    { title: "质量", dataIndex: "reliability", width: 100 },
-    { title: "可信度", dataIndex: "credibility", width: 100, render: nullable },
+    { title: "证据类型", dataIndex: "evidence_type", width: 120 },
     {
       title: "标题",
       dataIndex: "title",
@@ -128,242 +181,245 @@ function EvidenceSection({ detail }: { detail: ResearchRunDetail }) {
     {
       title: "摘要",
       dataIndex: "summary",
-      render: (value: string) => value || <EmptyState description="摘要为空" />,
+      width: 260,
+      render: (value: string) => <LongText text={value} maxLength={80} />,
+    },
+    { title: "来源", dataIndex: "source", width: 140 },
+    { title: "时间", dataIndex: "published_at", width: 170, render: formatDateTime },
+    { title: "可靠性", dataIndex: "reliability", width: 100, render: formatPercent },
+    {
+      title: "与假设关系",
+      width: 120,
+      render: (_value, record) => evidenceRelation(detail, record.evidence_id),
     },
     {
-      title: "发布时间",
-      dataIndex: "published_at",
-      width: 180,
-      render: formatDateTime,
-    },
-    { title: "关联标的", dataIndex: "symbols", width: 150, render: listText },
-    { title: "原始来源标识", dataIndex: "source_identifier", width: 170, render: nullable },
-    { title: "Content Hash", dataIndex: "content_hash", width: 180 },
-    { title: "处理状态", dataIndex: "processing_status", width: 120 },
-    {
-      title: "原始链接",
-      dataIndex: "source_url",
-      width: 130,
-      render: (value: string | null) =>
-        value ? (
-          <a href={value} target="_blank" rel="noreferrer noopener">
-            打开
+      title: "原始引用",
+      width: 120,
+      render: (_value, record) =>
+        record.source_url ? (
+          <a href={record.source_url} target="_blank" rel="noreferrer noopener">
+            打开引用
           </a>
-        ) : "-",
-    },
-    {
-      title: "被 Skill 引用",
-      width: 180,
-      render: (_value, record) => referencedBy.get(record.evidence_id)?.join(", ") || "-",
+        ) : (
+          formatValue(record.source_identifier)
+        ),
     },
   ];
   return (
-    <Card className="tool-card" title="Evidence">
+    <Card className="tool-card" title="3. 证据材料">
       <Table
         rowKey="evidence_id"
         columns={columns}
         dataSource={detail.evidence}
         pagination={false}
-        locale={{ emptyText: <EmptyState description="暂无 Evidence" /> }}
-        scroll={{ x: 1200 }}
-      />
-    </Card>
-  );
-}
-
-function SkillReportsSection({ reports }: { reports: AgentReport[] }) {
-  return (
-    <Card className="tool-card" title="Skill Reports">
-      {!reports.length ? <EmptyState description="暂无 Skill Report" /> : null}
-      <Collapse
-        defaultActiveKey={reports
-          .filter((report) => isReportFailure(report))
-          .map((report) => report.report_id)}
-        items={reports.map((report) => ({
-          key: report.report_id,
-          label: `${skillName(report.role)} / ${report.report_id}`,
-          children: (
-            <Space orientation="vertical" className="full-width" size="middle">
-              {isReportFailure(report) ? (
-                <Alert type="warning" showIcon title={report.raw_reference ?? report.summary} />
-              ) : null}
-              <Descriptions bordered size="small" column={2}>
-                <Descriptions.Item label="Skill 名称">{skillName(report.role)}</Descriptions.Item>
-                <Descriptions.Item label="状态"><StatusTag value={report.status} /></Descriptions.Item>
-                <Descriptions.Item label="结论或摘要">{report.summary}</Descriptions.Item>
-                <Descriptions.Item label="信号或方向">{report.stance}</Descriptions.Item>
-                <Descriptions.Item label="置信度">{formatPercent(report.confidence)}</Descriptions.Item>
-                <Descriptions.Item label="Evidence 引用">
-                  {report.evidence_ids.join(", ") || "-"}
-                </Descriptions.Item>
-                <Descriptions.Item label="来源">{report.source}</Descriptions.Item>
-                <Descriptions.Item label="创建时间">
-                  {formatDateTime(report.created_at)}
-                </Descriptions.Item>
-                <Descriptions.Item label="失败原因">
-                  {isReportFailure(report) ? report.raw_reference ?? report.summary : "-"}
-                </Descriptions.Item>
-              </Descriptions>
-              <Collapse
-                ghost
-                items={[
-                  {
-                    key: "json",
-                    label: "结构化输出",
-                    children: <pre className="json-block">{JSON.stringify(report, null, 2)}</pre>,
-                  },
-                ]}
+        expandable={{
+          expandedRowRender: (record) => (
+            <Space orientation="vertical" className="full-width">
+              <LongText text={record.raw_content ?? undefined} maxLength={240} />
+              <CopyableId value={record.evidence_id} label="证据编号" />
+              <TechnicalDetails
+                data={{
+                  evidence_id: record.evidence_id,
+                  content_hash: record.content_hash,
+                  metadata: record.metadata,
+                  raw_response: record.raw_response,
+                }}
               />
             </Space>
           ),
-        }))}
+        }}
+        locale={{ emptyText: <EmptyBusinessState description="该次研究没有证据材料" /> }}
+        scroll={{ x: 1100 }}
       />
     </Card>
   );
 }
 
-function HypothesisSection({ hypotheses }: { hypotheses: Hypothesis[] }) {
+function SkillAnalysisSection({ detail }: { detail: ResearchRunDetail }) {
+  const rows = SKILL_ORDER.map((skill) => skillRow(detail, skill.key, skill.name));
+  const columns: ColumnsType<SkillDisplayRow> = [
+    { title: "分析能力", dataIndex: "name", width: 140 },
+    {
+      title: "分析状态",
+      dataIndex: "status",
+      width: 120,
+      render: (value: string | null) => <BusinessStatusTag value={value} />,
+    },
+    {
+      title: "方向",
+      dataIndex: "direction",
+      width: 100,
+      render: displayDirection,
+    },
+    {
+      title: "置信度",
+      dataIndex: "confidence",
+      width: 100,
+      render: formatPercent,
+    },
+    {
+      title: "核心结论",
+      dataIndex: "conclusion",
+      width: 220,
+      render: (value: string | null) => <LongText text={value} maxLength={80} />,
+    },
+    {
+      title: "主要理由",
+      dataIndex: "reason",
+      width: 220,
+      render: (value: string | null) => <LongText text={value} maxLength={80} />,
+    },
+    { title: "引用证据", dataIndex: "evidence", width: 160, render: formatValue },
+    { title: "风险", dataIndex: "risk", width: 180, render: formatValue },
+    { title: "不确定项", dataIndex: "uncertainty", width: 180, render: formatValue },
+    {
+      title: "失败原因",
+      dataIndex: "error",
+      width: 180,
+      render: (value: string | null) => value || "-",
+    },
+  ];
   return (
-    <Card className="tool-card" title="Hypothesis">
-      {!hypotheses.length ? <EmptyState description="暂无 Hypothesis" /> : null}
-      <Space orientation="vertical" className="full-width">
-        {hypotheses.map((hypothesis) => (
-          <Descriptions key={hypothesis.hypothesis_id} bordered size="small" column={2}>
-            <Descriptions.Item label="内容">{hypothesis.statement}</Descriptions.Item>
-            <Descriptions.Item label="假设来源">
-              {hypothesis.supporting_report_ids.join(", ") || "-"}
-            </Descriptions.Item>
-            <Descriptions.Item label="Rationale">{hypothesis.rationale}</Descriptions.Item>
-            <Descriptions.Item label="方向">{hypothesis.direction}</Descriptions.Item>
-            <Descriptions.Item label="时间周期">{hypothesis.horizon_days} 天</Descriptions.Item>
-            <Descriptions.Item label="支持证据">
-              {hypothesis.supporting_evidence_ids.join(", ") || "-"}
-            </Descriptions.Item>
-            <Descriptions.Item label="反对证据">-</Descriptions.Item>
-            <Descriptions.Item label="初始置信度">
-              {formatPercent(hypothesis.confidence)}
-            </Descriptions.Item>
-            <Descriptions.Item label="修订状态"><StatusTag value={hypothesis.status} /></Descriptions.Item>
-            <Descriptions.Item label="关键条件">-</Descriptions.Item>
-            <Descriptions.Item label="预期时间范围">
-              {hypothesis.horizon_days} 天
-            </Descriptions.Item>
-          </Descriptions>
-        ))}
-      </Space>
-    </Card>
-  );
-}
-
-function DiscussionSection({ detail }: { detail: ResearchRunDetail }) {
-  const discussion = detail.discussion;
-  return (
-    <Card className="tool-card" title="Discussion">
-      <Tabs
-        defaultActiveKey="review"
-        items={[
-          {
-            key: "blind",
-            label: "第一阶段：盲报",
-            children: (
-              <Timeline
-                items={detail.skill_reports.map((report) => ({
-                  content: `${skillName(report.role)}: ${report.summary}`,
-                }))}
-              />
-            ),
-          },
-          {
-            key: "review",
-            label: "第二阶段：讨论与修订",
-            children: (
-              <Space orientation="vertical" className="full-width">
-                {discussion.statements.map((statement) => (
-                  <Alert
-                    key={statement.statement_id}
-                    type="info"
-                    showIcon
-                    title={`${statement.stance}: ${statement.reasoning}`}
-                    description={`confidence ${formatPercent(statement.confidence_before)} -> ${formatPercent(statement.confidence_after)}`}
-                  />
-                ))}
-                <Descriptions bordered size="small" column={2}>
-                  <Descriptions.Item label="冲突识别">
-                    {discussion.debates.map((debate) => debate.status).join(", ") || "-"}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="证据复核">
-                    {discussion.proposal?.evidence_ids.join(", ") || "-"}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="反方审查">
-                    {discussion.risk_review?.reasons.join(", ") || "-"}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="修订建议">
-                    {discussion.risk_review?.condition_changes.join(", ") || "-"}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="最终总结">
-                    {discussion.proposal?.thesis ?? "-"}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Proposal">
-                    {discussion.proposal
-                      ? `${discussion.proposal.proposal_id}: ${discussion.proposal.conclusion}`
-                      : "-"}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Risk Review">
-                    {discussion.risk_review
-                      ? `${discussion.risk_review.risk_review_id}: ${discussion.risk_review.verdict}`
-                      : "-"}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Assembly">
-                    {discussion.assembly
-                      ? `${discussion.assembly.assembly_id}: ${discussion.assembly.conclusion}`
-                      : "-"}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="最终置信度">
-                    {formatPercent(discussion.risk_review?.final_confidence)}
-                  </Descriptions.Item>
-                </Descriptions>
-              </Space>
-            ),
-          },
-        ]}
+    <Card className="tool-card" title="4. 五项独立分析">
+      <Table
+        rowKey="key"
+        columns={columns}
+        dataSource={rows}
+        pagination={false}
+        expandable={{
+          expandedRowRender: (record) =>
+            record.technical ? <TechnicalDetails data={record.technical} /> : null,
+        }}
+        scroll={{ x: 1400 }}
       />
     </Card>
   );
 }
 
-function DecisionSection({
-  decision,
-  runStatus,
-}: {
-  decision: Decision | null;
-  runStatus: string;
-}) {
+function ConflictSection({ detail }: { detail: ResearchRunDetail }) {
+  const conflicts = detail.discussion_result?.conflicts ?? [];
   return (
-    <Card className="tool-card" title="Decision">
+    <Card className="tool-card" title="5. 冲突识别">
+      {conflicts.length ? (
+        <DescriptionList rows={conflicts.map(summarizeObject)} />
+      ) : (
+        <MissingStage name="冲突识别" />
+      )}
+    </Card>
+  );
+}
+
+function EvidenceReviewSection({ detail }: { detail: ResearchRunDetail }) {
+  const reviews = detail.discussion_result?.evidence_reviews ?? [];
+  return (
+    <Card className="tool-card" title="6. 证据复核">
+      {reviews.length ? (
+        <DescriptionList rows={reviews.map(summarizeObject)} />
+      ) : (
+        <MissingStage name="证据复核" />
+      )}
+    </Card>
+  );
+}
+
+function CounterReviewSection({ detail }: { detail: ResearchRunDetail }) {
+  const counters = detail.discussion_result?.counter_arguments ?? [];
+  return (
+    <Card className="tool-card" title="7. 反方审查">
+      {counters.length ? (
+        <DescriptionList rows={counters.map(summarizeObject)} />
+      ) : detail.discussion.risk_review ? (
+        <Descriptions bordered size="small" column={2}>
+          <Descriptions.Item label="最强反对理由">
+            {detail.discussion.risk_review.opposing_arguments.join("、") || "-"}
+          </Descriptions.Item>
+          <Descriptions.Item label="被忽略风险">
+            {detail.discussion.risk_review.reasons.join("、") || "-"}
+          </Descriptions.Item>
+          <Descriptions.Item label="可能失败的条件">
+            {detail.discussion.risk_review.condition_changes.join("、") || "-"}
+          </Descriptions.Item>
+          <Descriptions.Item label="反方置信度">
+            {formatPercent(detail.discussion.risk_review.final_confidence)}
+          </Descriptions.Item>
+        </Descriptions>
+      ) : (
+        <MissingStage name="反方审查" />
+      )}
+    </Card>
+  );
+}
+
+function RevisionSection({ detail }: { detail: ResearchRunDetail }) {
+  const revisions = detail.discussion_result?.revision_suggestions ?? [];
+  return (
+    <Card className="tool-card" title="8. 讨论修订">
+      <Descriptions bordered size="small" column={2}>
+        <Descriptions.Item label="初始分析结论">
+          {detail.skill_results.map((item) => item.conclusion).join("；") || "-"}
+        </Descriptions.Item>
+        <Descriptions.Item label="修订后的结论">
+          {detail.discussion_result?.discussion_summary ??
+            detail.discussion.proposal?.thesis ??
+            "-"}
+        </Descriptions.Item>
+        <Descriptions.Item label="修改原因">
+          {revisions.map(summarizeObject).join("；") || "未记录"}
+        </Descriptions.Item>
+        <Descriptions.Item label="哪些证据导致修改">
+          {detail.discussion.proposal?.evidence_ids.join("、") ||
+            detail.decision_result?.supporting_reasons.map(summarizeObject).join("；") ||
+            "-"}
+        </Descriptions.Item>
+        <Descriptions.Item label="置信度变化">
+          {confidenceChange(detail)}
+        </Descriptions.Item>
+      </Descriptions>
+      {!detail.discussion_result && !detail.discussion.proposal ? (
+        <MissingStage name="讨论修订" />
+      ) : null}
+    </Card>
+  );
+}
+
+function FinalDecisionSection({ decision }: { decision: Decision | null }) {
+  return (
+    <Card className="tool-card" title="9. 最终决策">
       {!decision ? (
-        <Alert
-          type={runStatus === "failed" ? "warning" : "info"}
-          showIcon
-          title={runStatus === "failed" ? "Decision 生成失败" : "Decision 尚未生成"}
-        />
+        <MissingStage name="最终决策" />
       ) : (
         <Descriptions bordered size="small" column={2}>
-          <Descriptions.Item label="Decision ID">{decision.decision_id}</Descriptions.Item>
-          <Descriptions.Item label="Decision">{decision.action}</Descriptions.Item>
-          <Descriptions.Item label="置信度">{formatPercent(decision.confidence)}</Descriptions.Item>
-          <Descriptions.Item label="时间周期">{decision.horizon}</Descriptions.Item>
-          <Descriptions.Item label="决策理由">{decision.reasoning_summary}</Descriptions.Item>
-          <Descriptions.Item label="入场条件">{decision.entry_conditions.join(", ") || "-"}</Descriptions.Item>
-          <Descriptions.Item label="失效条件">
-            {decision.invalidation_conditions.join(", ") || "-"}
+          <Descriptions.Item label="决策">
+            {displayAction(decision.action)}
           </Descriptions.Item>
-          <Descriptions.Item label="风险说明">{decision.risk_factors.join(", ") || "-"}</Descriptions.Item>
-          <Descriptions.Item label="Evidence 引用">{decision.evidence_ids.join(", ")}</Descriptions.Item>
-          <Descriptions.Item label="no_trade 原因">
-            {[...decision.unavailable_fields, ...decision.downgrade_reasons].join(", ") || "-"}
+          <Descriptions.Item label="置信度">
+            {formatPercent(decision.confidence)}
           </Descriptions.Item>
-          <Descriptions.Item label="状态"><StatusTag value={decision.status} /></Descriptions.Item>
-          <Descriptions.Item label="创建时间">{formatDateTime(decision.created_at)}</Descriptions.Item>
+          <Descriptions.Item label="决策摘要">
+            <LongText text={decision.reasoning_summary} />
+          </Descriptions.Item>
+          <Descriptions.Item label="核心支持理由">
+            {decision.entry_conditions.join("、") || "-"}
+          </Descriptions.Item>
+          <Descriptions.Item label="主要反对理由">
+            {decision.dissenting_opinions.join("、") || "-"}
+          </Descriptions.Item>
+          <Descriptions.Item label="风险因素">
+            {decision.risk_factors.join("、") || "-"}
+          </Descriptions.Item>
+          <Descriptions.Item label="决策失效条件">
+            {decision.invalidation_conditions.join("、") || "-"}
+          </Descriptions.Item>
+          <Descriptions.Item label="不交易原因">
+            {[...decision.unavailable_fields, ...decision.downgrade_reasons].join("、") ||
+              "-"}
+          </Descriptions.Item>
+          <Descriptions.Item label="状态">
+            <BusinessStatusTag value={decision.status} />
+          </Descriptions.Item>
+          <Descriptions.Item label="决策时间">
+            {formatDateTime(decision.created_at)}
+          </Descriptions.Item>
         </Descriptions>
       )}
     </Card>
@@ -372,37 +428,35 @@ function DecisionSection({
 
 function TradePlanSection({ tradePlan }: { tradePlan: TradePlan | null }) {
   return (
-    <Card className="tool-card" title="Trade Plan">
+    <Card className="tool-card" title="10. 交易计划">
       {!tradePlan ? (
-        <EmptyState description="暂无 Trade Plan" />
+        <MissingStage name="交易计划" />
       ) : (
         <Descriptions bordered size="small" column={2}>
-          <Descriptions.Item label="Trade Plan ID">{tradePlan.trade_plan_id}</Descriptions.Item>
-          <Descriptions.Item label="方向">{tradePlan.direction}</Descriptions.Item>
-          <Descriptions.Item label="标的">{tradePlan.symbol}</Descriptions.Item>
-          <Descriptions.Item label="入场计划">
-            {tradePlan.planned_entry.join(", ") || "-"}
+          <Descriptions.Item label="是否生成交易计划">是</Descriptions.Item>
+          <Descriptions.Item label="状态">
+            <BusinessStatusTag value={tradePlan.status} />
           </Descriptions.Item>
-          <Descriptions.Item label="Entry Price 或价格区间">
+          <Descriptions.Item label="入场条件">
+            {tradePlan.entry_conditions.join("、") ||
+              tradePlan.planned_entry.join("、") ||
+              "-"}
+          </Descriptions.Item>
+          <Descriptions.Item label="建议仓位">
+            {formatPercent(tradePlan.planned_position)}
+          </Descriptions.Item>
+          <Descriptions.Item label="止损条件">
+            {formatValue(tradePlan.stop_loss)}
+          </Descriptions.Item>
+          <Descriptions.Item label="止盈条件">
             {tradePlan.target?.join(" - ") ?? "-"}
           </Descriptions.Item>
-          <Descriptions.Item label="风险条件">
-            {tradePlan.invalidation_conditions.join(", ") || "-"}
+          <Descriptions.Item label="持有周期">{tradePlan.horizon}</Descriptions.Item>
+          <Descriptions.Item label="退出条件">
+            {tradePlan.invalidation_conditions.join("、") || "-"}
           </Descriptions.Item>
-          <Descriptions.Item label="目标周期">{tradePlan.horizon}</Descriptions.Item>
-          <Descriptions.Item label="Stop Loss">{tradePlan.stop_loss ?? "-"}</Descriptions.Item>
-          <Descriptions.Item label="Take Profit">
-            {tradePlan.target?.join(" - ") ?? "-"}
-          </Descriptions.Item>
-          <Descriptions.Item label="失效条件">
-            {tradePlan.invalidation_conditions.join(", ") || "-"}
-          </Descriptions.Item>
-          <Descriptions.Item label="仓位或规模">
-            {tradePlan.planned_position === null ? "-" : formatPercent(tradePlan.planned_position)}
-          </Descriptions.Item>
-          <Descriptions.Item label="状态"><StatusTag value={tradePlan.status} /></Descriptions.Item>
-          <Descriptions.Item label="Risk Budget">
-            {tradePlan.planned_position === null ? "-" : formatPercent(tradePlan.planned_position)}
+          <Descriptions.Item label="不执行原因">
+            {tradePlan.no_trade_reasons.join("、") || "-"}
           </Descriptions.Item>
         </Descriptions>
       )}
@@ -410,41 +464,328 @@ function TradePlanSection({ tradePlan }: { tradePlan: TradePlan | null }) {
   );
 }
 
-function evidenceReferences(reports: AgentReport[]) {
-  const result = new Map<string, string[]>();
-  for (const report of reports) {
-    for (const evidenceId of report.evidence_ids) {
-      result.set(evidenceId, [...(result.get(evidenceId) ?? []), skillName(report.role)]);
-    }
-  }
-  return result;
+function ExecutionSection({ execution }: { execution: SimulatedExecution | null }) {
+  return (
+    <Card className="tool-card" title="11. 模拟执行">
+      {!execution ? (
+        <MissingStage name="模拟执行" />
+      ) : (
+        <Descriptions bordered size="small" column={2}>
+          <Descriptions.Item label="是否执行">是</Descriptions.Item>
+          <Descriptions.Item label="当前状态">
+            <BusinessStatusTag value={execution.execution_status} />
+          </Descriptions.Item>
+          <Descriptions.Item label="执行方向">
+            {displayDirection(execution.direction)}
+          </Descriptions.Item>
+          <Descriptions.Item label="模拟价格">
+            {formatValue(execution.executed_entry ?? execution.planned_entry)}
+          </Descriptions.Item>
+          <Descriptions.Item label="模拟数量或仓位">
+            {formatValue(execution.position_size)}
+          </Descriptions.Item>
+          <Descriptions.Item label="执行时间">
+            {formatDateTime(execution.execution_date)}
+          </Descriptions.Item>
+        </Descriptions>
+      )}
+    </Card>
+  );
 }
 
-function skillName(role: string) {
+function SettlementSection({ settlement }: { settlement: Outcome | null }) {
+  return (
+    <Card className="tool-card" title="12. 结果结算">
+      {!settlement ? (
+        <MissingStage name="结果结算" />
+      ) : (
+        <Descriptions bordered size="small" column={2}>
+          <Descriptions.Item label="入场价格">
+            {formatValue(settlement.entry_price)}
+          </Descriptions.Item>
+          <Descriptions.Item label="退出价格">
+            {formatValue(settlement.exit_price)}
+          </Descriptions.Item>
+          <Descriptions.Item label="收益率">
+            {formatPercent(settlement.return_rate)}
+          </Descriptions.Item>
+          <Descriptions.Item label="收益金额">{formatValue(settlement.pnl)}</Descriptions.Item>
+          <Descriptions.Item label="结算时间">
+            {formatDateTime(settlement.settled_at)}
+          </Descriptions.Item>
+          <Descriptions.Item label="结算状态">
+            <BusinessStatusTag value={settlement.status} />
+          </Descriptions.Item>
+        </Descriptions>
+      )}
+    </Card>
+  );
+}
+
+function EvaluationReviewSection({
+  evaluation,
+  review,
+  settlement,
+}: {
+  evaluation: Evaluation | null;
+  review: Review | null;
+  settlement: Outcome | null;
+}) {
+  return (
+    <Card className="tool-card" title="13. 评价与复盘">
+      {!evaluation && !review ? <MissingStage name="评价与复盘" /> : null}
+      <Descriptions bordered size="small" column={2}>
+        <Descriptions.Item label="方向是否正确">
+          {evaluation ? displayStatus(evaluation.directional_result) : "-"}
+        </Descriptions.Item>
+        <Descriptions.Item label="预期收益是否达到">
+          {evaluation ? displayStatus(evaluation.return_result) : "-"}
+        </Descriptions.Item>
+        <Descriptions.Item label="最大有利波动">
+          {formatPercent(settlement?.max_favorable_excursion)}
+        </Descriptions.Item>
+        <Descriptions.Item label="最大不利波动">
+          {formatPercent(settlement?.maximum_adverse_excursion)}
+        </Descriptions.Item>
+        <Descriptions.Item label="风控是否有效">
+          {evaluation ? displayStatus(evaluation.risk_result) : "-"}
+        </Descriptions.Item>
+        <Descriptions.Item label="主要错误归因">
+          {review?.failure_reasons.join("、") || "-"}
+        </Descriptions.Item>
+        <Descriptions.Item label="哪个分析环节出现问题">
+          {review?.mistaken_judgement_ids.join("、") || "-"}
+        </Descriptions.Item>
+        <Descriptions.Item label="哪项证据失效">
+          {review?.effective_evidence_ids.join("、") || "-"}
+        </Descriptions.Item>
+        <Descriptions.Item label="是否忽略反方意见">
+          {formatBoolean(review?.risk_limit_breached)}
+        </Descriptions.Item>
+        <Descriptions.Item label="复盘摘要">
+          <LongText text={review?.review_summary ?? evaluation?.explanation ?? null} />
+        </Descriptions.Item>
+      </Descriptions>
+    </Card>
+  );
+}
+
+function LearningSection({ learnings }: { learnings: Learning[] }) {
+  return (
+    <Card className="tool-card" title="14. 学习建议">
+      {!learnings.length ? (
+        <MissingStage name="学习建议" />
+      ) : (
+        <Space orientation="vertical" className="full-width">
+          {learnings.map((learning) => (
+            <Descriptions
+              key={learning.learning_id}
+              bordered
+              size="small"
+              column={2}
+            >
+              <Descriptions.Item label="是否生成学习建议">是</Descriptions.Item>
+              <Descriptions.Item label="建议类型">
+                {displayLearningType(learning.learning_type)}
+              </Descriptions.Item>
+              <Descriptions.Item label="调整对象">{learning.target}</Descriptions.Item>
+              <Descriptions.Item label="当前值">
+                {summarizeValue(learning.before)}
+              </Descriptions.Item>
+              <Descriptions.Item label="建议值">
+                {summarizeValue(learning.after)}
+              </Descriptions.Item>
+              <Descriptions.Item label="原因">
+                <LongText text={learning.reason} />
+              </Descriptions.Item>
+              <Descriptions.Item label="审核状态">
+                <BusinessStatusTag value={learning.approval_status} />
+              </Descriptions.Item>
+              <Descriptions.Item label="创建时间">
+                {formatDateTime(learning.created_at)}
+              </Descriptions.Item>
+            </Descriptions>
+          ))}
+        </Space>
+      )}
+    </Card>
+  );
+}
+
+function MissingStage({ name }: { name: string }) {
+  return (
+    <Alert
+      type="info"
+      showIcon
+      title={`该次研究未产生${name}的结构化记录。`}
+    />
+  );
+}
+
+function DescriptionList({ rows }: { rows: string[] }) {
+  return (
+    <Space orientation="vertical" className="full-width">
+      {rows.map((row, index) => (
+        <Alert key={`${index}:${row}`} type="info" showIcon title={row} />
+      ))}
+    </Space>
+  );
+}
+
+type SkillDisplayRow = {
+  key: string;
+  name: string;
+  status: string | null;
+  direction: string | null;
+  confidence: number | null;
+  conclusion: string | null;
+  reason: string | null;
+  evidence: string;
+  risk: string;
+  uncertainty: string;
+  error: string | null;
+  technical: unknown;
+};
+
+function skillRow(
+  detail: ResearchRunDetail,
+  key: string,
+  name: string,
+): SkillDisplayRow {
+  const result = detail.skill_results.find((item) => normalizedSkill(item.skill_id) === key);
+  const execution = detail.skill_executions.find(
+    (item) => normalizedSkill(item.skill_id) === key,
+  );
+  const report = detail.skill_reports.find((item) => normalizedSkill(item.role) === key);
+  return {
+    key,
+    name,
+    status: execution?.status ?? report?.status ?? null,
+    direction: result?.direction ?? report?.stance ?? null,
+    confidence: result?.confidence ?? report?.confidence ?? null,
+    conclusion: result?.conclusion ?? report?.summary ?? null,
+    reason: result?.reasoning_summary ?? report?.summary ?? null,
+    evidence:
+      result?.supporting_evidence_ids.join("、") ??
+      report?.evidence_ids.join("、") ??
+      "-",
+    risk: result?.risk_factors.join("、") || "-",
+    uncertainty: result?.missing_information.join("、") || "-",
+    error: execution?.error ?? report?.raw_reference ?? null,
+    technical: { result, execution, report },
+  };
+}
+
+function normalizedSkill(value: string) {
   const mapping: Record<string, string> = {
     technical: "technical_trend",
+    technical_trend: "technical_trend",
+    sector: "sector_strength",
+    sector_strength: "sector_strength",
     fundamental: "sector_strength",
+    policy: "policy_impact",
+    policy_impact: "policy_impact",
+    capital_flow: "policy_impact",
+    announcement: "announcement_risk",
+    announcement_risk: "announcement_risk",
     news: "announcement_risk",
     sentiment: "market_sentiment",
-    capital_flow: "policy_impact",
+    market_sentiment: "market_sentiment",
   };
-  return mapping[role] ?? role;
+  return mapping[value] ?? value;
 }
 
-function isReportFailure(report: AgentReport) {
-  return Boolean(report.raw_reference?.toLowerCase().includes("error")) || report.confidence === 0;
+function businessSubject(detail: ResearchRunDetail) {
+  return detail.watchlist_item?.symbol ?? detail.session?.scope.symbol ?? detail.run.symbol ?? "-";
 }
 
-function listText(values: string[]) {
-  return values.join(", ") || "-";
+function researchHorizon(detail: ResearchRunDetail) {
+  const days = detail.session?.scope.horizon_days ?? detail.run.input_params.horizon_days;
+  if (typeof days === "number" || typeof days === "string") return `${days} 天`;
+  return detail.decision?.horizon ?? detail.analysis_task?.horizon ?? "-";
 }
 
-function nullable(value: unknown) {
-  return value ?? "-";
+function triggerMethod(detail: ResearchRunDetail) {
+  return stringInput(detail, "trigger_method") ?? detail.run.workflow;
 }
 
-function errorMessage(error: unknown) {
-  if (error instanceof ApiError) return error.readableMessage;
-  if (error instanceof Error) return error.message;
-  return "Backend request failed";
+function triggerReason(detail: ResearchRunDetail) {
+  return (
+    stringInput(detail, "trigger_reason") ??
+    stringInput(detail, "source") ??
+    detail.watchlist_item?.note ??
+    null
+  );
+}
+
+function initialHypothesis(detail: ResearchRunDetail) {
+  return (
+    stringInput(detail, "initial_hypothesis") ??
+    stringInput(detail, "hypothesis") ??
+    null
+  );
+}
+
+function stringInput(detail: ResearchRunDetail, key: string) {
+  const value = detail.run.input_params[key];
+  return typeof value === "string" && value ? value : null;
+}
+
+function evidenceRelation(detail: ResearchRunDetail, evidenceId: string) {
+  if (
+    detail.skill_results.some((item) =>
+      item.supporting_evidence_ids.includes(evidenceId),
+    ) ||
+    detail.hypotheses.some((item) => item.supporting_evidence_ids.includes(evidenceId))
+  ) {
+    return "支持";
+  }
+  if (
+    detail.skill_results.some((item) =>
+      item.contradicting_evidence_ids.includes(evidenceId),
+    )
+  ) {
+    return "反对";
+  }
+  return "中性";
+}
+
+function confidenceChange(detail: ResearchRunDetail) {
+  const before = detail.skill_results[0]?.confidence ?? detail.hypotheses[0]?.confidence;
+  const after =
+    detail.discussion_result?.discussion_confidence ??
+    detail.discussion.risk_review?.final_confidence ??
+    detail.decision?.confidence;
+  if (before === undefined && after === undefined) return "-";
+  return `${formatPercent(before)} → ${formatPercent(after)}`;
+}
+
+function summarizeObject(value: Record<string, unknown>) {
+  const preferred = [
+    "summary",
+    "reason",
+    "rationale",
+    "description",
+    "conclusion",
+    "issue",
+    "recommendation",
+  ];
+  for (const key of preferred) {
+    const current = value[key];
+    if (typeof current === "string" && current) return current;
+  }
+  return Object.entries(value)
+    .slice(0, 4)
+    .map(([key, current]) => `${key}：${formatValue(current)}`)
+    .join("；");
+}
+
+function summarizeValue(value: unknown) {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return Object.entries(value)
+      .slice(0, 4)
+      .map(([key, current]) => `${key}：${formatValue(current)}`)
+      .join("；");
+  }
+  return formatValue(value);
 }
