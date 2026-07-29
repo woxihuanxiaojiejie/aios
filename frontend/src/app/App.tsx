@@ -41,6 +41,16 @@ const ReviewDetailPage = lazy(() =>
     default: module.ReviewDetailPage,
   })),
 );
+const LearningPage = lazy(() =>
+  import("../features/learning/pages/LearningPage").then((module) => ({
+    default: module.LearningPage,
+  })),
+);
+const LearningDetailPage = lazy(() =>
+  import("../features/learning/pages/LearningDetailPage").then((module) => ({
+    default: module.LearningDetailPage,
+  })),
+);
 const ExecutionsPage = lazy(() =>
   import("../features/explorer/pages/ExecutionsPage").then((module) => ({
     default: module.ExecutionsPage,
@@ -88,6 +98,8 @@ export function App() {
                 <Route path="/decisions" element={<DecisionsPage />} />
                 <Route path="/reviews" element={<ReviewsPage />} />
                 <Route path="/reviews/:settlementId" element={<ReviewDetailPage />} />
+                <Route path="/learning" element={<LearningPage />} />
+                <Route path="/learning/:learningId" element={<LearningDetailPage />} />
                 <Route path="/executions" element={<ExecutionsPage />} />
                 <Route path="/executions/:executionId" element={<ExecutionDetailPage />} />
                 <Route path="/settlements" element={<SettlementsPage />} />

@@ -70,6 +70,14 @@ describe("App routing", () => {
     expect(await screen.findByRole("heading", { name: "复盘" })).toBeInTheDocument();
   });
 
+  it("serves the Learning business page at /learning", async () => {
+    window.history.pushState({}, "", "/learning");
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "学习" })).toBeInTheDocument();
+  });
+
   it("keeps the existing ResearchWorkbench available at /research/new", async () => {
     window.history.pushState({}, "", "/research/new");
 
