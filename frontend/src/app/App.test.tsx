@@ -20,8 +20,9 @@ describe("App routing", () => {
 
     await waitFor(() => expect(window.location.pathname).toBe("/dashboard"));
     expect(
-      await screen.findByRole("heading", { name: "AIOS Results Home" }),
+      await screen.findByRole("heading", { name: "AIOS Results Summary" }),
     ).toBeInTheDocument();
+    expect(screen.queryByText("AIOS 人工验收工作台")).not.toBeInTheDocument();
   });
 
   it("serves /dashboard and keeps dashboard first in navigation", async () => {
@@ -29,7 +30,9 @@ describe("App routing", () => {
 
     render(<App />);
 
-    expect(await screen.findByText("Research Runs 总数")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "AIOS Results Summary" })).toBeInTheDocument();
+    expect(screen.queryByText("新增股票")).not.toBeInTheDocument();
+    expect(screen.queryByText("创建证据")).not.toBeInTheDocument();
     const navItems = screen.getAllByRole("menuitem").map((item) => item.textContent);
     expect(navItems).toEqual([
       "Dashboard",
@@ -57,6 +60,8 @@ describe("App routing", () => {
     expect(
       await screen.findByText("AIOS 人工验收工作台"),
     ).toBeInTheDocument();
+    expect(screen.getByText("新增股票")).toBeInTheDocument();
+    expect(screen.getByText("创建证据")).toBeInTheDocument();
   });
 
   it("serves the execution and settlement explorer routes", async () => {

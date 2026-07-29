@@ -17,16 +17,27 @@ describe("DashboardPage", () => {
   it("renders summary counts, attention rows, recent results, and real detail links", async () => {
     renderPage();
 
-    expect(await screen.findByRole("heading", { name: "AIOS Results Home" })).toBeInTheDocument();
-    expect(screen.getByText("Research Runs 总数")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "AIOS Results Summary" })).toBeInTheDocument();
+    expect(screen.getByText("研究、决策、模拟执行、结算和学习结果总览")).toBeInTheDocument();
+    expect(screen.queryByText("AIOS 人工验收工作台")).not.toBeInTheDocument();
+    expect(screen.queryByText("新增股票")).not.toBeInTheDocument();
+    expect(screen.queryByText("创建证据")).not.toBeInTheDocument();
+    expect(screen.getByText("Research Runs")).toBeInTheDocument();
+    expect(screen.getByText("Completed Research")).toBeInTheDocument();
+    expect(screen.getByText("Simulated Executions")).toBeInTheDocument();
+    expect(screen.getByText("Settlements")).toBeInTheDocument();
+    expect(screen.getByText("Pending Learning Proposals")).toBeInTheDocument();
+    expect(screen.getByText("Failed / Resumable Research")).toBeInTheDocument();
     expect(screen.getByText("12")).toBeInTheDocument();
-    expect(screen.getByText("暂无足够数据")).toBeInTheDocument();
     expect(screen.getByText("missing_trade_plan")).toBeInTheDocument();
     expect(screen.getByText("Decision 已生成")).toBeInTheDocument();
     expect(screen.getByText("Trade Plan")).toBeInTheDocument();
     expect(screen.getAllByText("buy").length).toBeGreaterThan(0);
-    expect(screen.getByText("ready")).toBeInTheDocument();
     expect(screen.getByText("fixed deterministic execution evaluation")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open System Status" })).toHaveAttribute(
+      "href",
+      "/system",
+    );
     expect(screen.getAllByRole("link", { name: "run_123" })[0]).toHaveAttribute(
       "href",
       "/research/run_123",
@@ -44,7 +55,6 @@ describe("DashboardPage", () => {
     expect(await screen.findAllByText("暂无需要处理的事项")).toHaveLength(1);
     expect(screen.getByText("暂无最近研究结果")).toBeInTheDocument();
     expect(screen.getByText("暂无最近结算结果")).toBeInTheDocument();
-    expect(screen.getByText("暂无足够数据")).toBeInTheDocument();
     empty.unmount();
 
     mode = "error";
