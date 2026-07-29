@@ -9,7 +9,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - aios_postgres_data:/var/lib/postgresql/data/pgdata
+      - aios_postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U aios -d aios"]
       interval: 5s
@@ -69,8 +69,3 @@ services:
 
 volumes:
   aios_postgres_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${AIOS_POSTGRES_VOLUME_DIR:-/tmp/aios-postgres-data}
