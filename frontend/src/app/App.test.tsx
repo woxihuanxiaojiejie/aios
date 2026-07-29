@@ -115,7 +115,7 @@ describe("App routing", () => {
 
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "System Runtime Status" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "系统运行状态" })).toBeInTheDocument();
     const navItems = screen.getAllByRole("menuitem").map((item) => item.textContent);
     expect(navItems.at(-1)).toBe("系统");
   });

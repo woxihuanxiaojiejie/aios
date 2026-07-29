@@ -19,21 +19,20 @@ describe("SystemStatusPage", () => {
   it("renders runtime status, pending work, providers, links, and no write controls", async () => {
     renderPage();
 
-    expect(await screen.findByRole("heading", { name: "System Runtime Status" })).toBeInTheDocument();
-    expect(screen.getByText("Overall Status")).toBeInTheDocument();
-    expect(screen.getByText("Core Components")).toBeInTheDocument();
-    expect(screen.getByText("Scheduler Jobs")).toBeInTheDocument();
-    expect(screen.getByText("Pending Work")).toBeInTheDocument();
-    expect(screen.getByText("Providers")).toBeInTheDocument();
-    expect(screen.getByText("Application")).toBeInTheDocument();
-    expect(screen.getByText("Database")).toBeInTheDocument();
-    expect(screen.getByText("Scheduler")).toBeInTheDocument();
-    expect(screen.getByText("research_due_scan")).toBeInTheDocument();
-    expect(screen.getByText("settlement_due_scan")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "系统运行状态" })).toBeInTheDocument();
+    expect(screen.getByText("系统总体状态")).toBeInTheDocument();
+    expect(screen.getByText("核心组件")).toBeInTheDocument();
+    expect(screen.getByText("调度任务")).toBeInTheDocument();
+    expect(screen.getByText("待处理工作")).toBeInTheDocument();
+    expect(screen.getByText("数据提供方与大模型提供方")).toBeInTheDocument();
+    expect(screen.getByText("应用")).toBeInTheDocument();
+    expect(screen.getByText("数据库")).toBeInTheDocument();
+    expect(screen.getByText("调度器")).toBeInTheDocument();
+    expect(screen.getByText("自动研究扫描")).toBeInTheDocument();
+    expect(screen.getByText("自动结算扫描")).toBeInTheDocument();
     expect(screen.getByText("deepseek")).toBeInTheDocument();
-    expect(screen.getAllByRole("link", { name: "Research" })[0]).toHaveAttribute("href", "/research");
-    expect(screen.getByRole("link", { name: "Executions" })).toHaveAttribute("href", "/executions");
-    expect(screen.getByRole("link", { name: "Settlements" })).toHaveAttribute("href", "/settlements");
+    expect(screen.getAllByRole("link", { name: "进入研究" })[0]).toHaveAttribute("href", "/research");
+    expect(screen.getByRole("link", { name: "进入复盘" })).toHaveAttribute("href", "/reviews");
     expect(screen.queryByRole("button", { name: /restart|start|stop|approve|reject|apply/i })).not.toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/api_key|secret|token|password|echarts|chart\.js|recharts/i);
   });
@@ -41,10 +40,10 @@ describe("SystemStatusPage", () => {
   it("refreshes by reloading the read-only status API", async () => {
     renderPage();
 
-    expect(await screen.findByText("scheduler heartbeat is current")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(await screen.findByText("调度器心跳正常。")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /刷\s*新/ }));
 
-    expect(await screen.findByText("scheduler heartbeat is current")).toBeInTheDocument();
+    expect(await screen.findByText("调度器心跳正常。")).toBeInTheDocument();
     expect(requests).toBeGreaterThanOrEqual(2);
   });
 
@@ -56,7 +55,7 @@ describe("SystemStatusPage", () => {
 
     mode = "error";
     renderPage();
-    expect(await screen.findByText("System status failed")).toBeInTheDocument();
+    expect(await screen.findByText("系统运行状态读取失败，请稍后重试。")).toBeInTheDocument();
   });
 });
 
