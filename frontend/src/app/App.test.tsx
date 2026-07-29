@@ -62,6 +62,14 @@ describe("App routing", () => {
     expect(await screen.findByRole("heading", { name: "决策" })).toBeInTheDocument();
   });
 
+  it("serves the Reviews business page at /reviews", async () => {
+    window.history.pushState({}, "", "/reviews");
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "复盘" })).toBeInTheDocument();
+  });
+
   it("keeps the existing ResearchWorkbench available at /research/new", async () => {
     window.history.pushState({}, "", "/research/new");
 
@@ -197,6 +205,9 @@ async function apiResponse(input: RequestInfo | URL) {
     return json({ items: [], total: 0, limit: 10, offset: 0, count: 0 });
   }
   if (url.includes("/decisions/summary")) {
+    return json({ items: [], total: 0, page: 1, page_size: 10, count: 0 });
+  }
+  if (url.includes("/reviews/summary")) {
     return json({ items: [], total: 0, page: 1, page_size: 10, count: 0 });
   }
   if (url.includes("/simulated-executions")) {
