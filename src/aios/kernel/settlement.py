@@ -10,6 +10,8 @@ from aios.kernel.base import KernelModel, ensure_utc, new_id, utc_now
 from aios.kernel.enums import (
     DirectionalResult,
     EvaluationFinalResult,
+    EvaluationScore,
+    ExecutionExitReason,
     OutcomeStatus,
     ReturnResult,
     RiskResult,
@@ -36,7 +38,19 @@ class DecisionOutcome(KernelModel):
     market_data_snapshot: dict[str, Any] = Field(default_factory=dict)
     settled_at: datetime = Field(default_factory=utc_now)
     status: OutcomeStatus
+    execution_id: str | None = Field(default=None, min_length=1)
+    trade_plan_id: str | None = Field(default=None, min_length=1)
+    research_session_id: str | None = Field(default=None, min_length=1)
+    pnl: Decimal | None = None
+    return_rate: Decimal | None = None
+    holding_days: int | None = Field(default=None, ge=0)
+    exit_reason: ExecutionExitReason | None = None
+    max_drawdown: Decimal | None = None
     created_at: datetime = Field(default_factory=utc_now)
+
+    @property
+    def max_favorable_excursion(self) -> Decimal | None:
+        return self.maximum_favorable_excursion
 
     @field_validator(
         "observation_started_at",
@@ -54,6 +68,9 @@ class DecisionOutcome(KernelModel):
         "realized_return",
         "maximum_adverse_excursion",
         "maximum_favorable_excursion",
+        "pnl",
+        "return_rate",
+        "max_drawdown",
         mode="before",
     )
     @classmethod
@@ -103,9 +120,47 @@ class DecisionEvaluation(KernelModel):
     evaluation_rules_version: str = Field(min_length=1)
     evaluated_at: datetime = Field(default_factory=utc_now)
     explanation: str = Field(min_length=1, max_length=1200)
+    prediction_accuracy: EvaluationScore | None = None
+    timing_accuracy: EvaluationScore | None = None
+    risk_control: EvaluationScore | None = None
+    execution_quality: EvaluationScore | None = None
     created_at: datetime = Field(default_factory=utc_now)
 
     @field_validator("evaluated_at", "created_at")
     @classmethod
     def validate_datetime(cls, value: datetime) -> datetime:
+        return ensure_utc(value)
+
+
+class ResearchSettlementRecord(KernelModel):
+    id_field: ClassVar[str] = "research_settlement_id"
+
+    research_settlement_id: str = Field(default_factory=lambda: new_id("sr_"))
+    assembly_id: str = Field(min_length=1)
+    research_session_id: str = Field(min_length=1)
+    debate_id: str | None = Field(default=None, min_length=1)
+    proposal_id: str | None = Field(default=None, min_length=1)
+    risk_review_id: str | None = Field(default=None, min_length=1)
+    decision_id: str = Field(min_length=1)
+    outcome_id: str = Field(min_length=1)
+    evaluation_id: str = Field(min_length=1)
+    review_id: str = Field(min_length=1)
+    learning_ids: tuple[str, ...] = ()
+    evidence_ids: tuple[str, ...]
+    report_ids: tuple[str, ...]
+    hypothesis_ids: tuple[str, ...]
+    settled_at: datetime
+    created_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("learning_ids", "evidence_ids", "report_ids", "hypothesis_ids")
+    @classmethod
+    def validate_unique_ids(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if len(value) != len(set(value)):
+            msg = "duplicate IDs are not allowed"
+            raise ValueError(msg)
+        return value
+
+    @field_validator("settled_at", "created_at")
+    @classmethod
+    def validate_record_datetime(cls, value: datetime) -> datetime:
         return ensure_utc(value)

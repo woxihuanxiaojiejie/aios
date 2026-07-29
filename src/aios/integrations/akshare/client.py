@@ -13,7 +13,7 @@ class AKShareClient:
         end_date: str,
         adjust: str,
     ) -> Any:
-        import akshare as ak  # type: ignore[import-not-found]
+        import akshare as ak
 
         return ak.stock_zh_a_hist(
             symbol=symbol,
@@ -21,4 +21,23 @@ class AKShareClient:
             start_date=start_date,
             end_date=end_date,
             adjust=adjust,
+        )
+
+    def stock_zh_a_disclosure_report_cninfo(
+        self,
+        *,
+        symbol: str,
+        market: str,
+        category: str,
+        start_date: str,
+        end_date: str,
+    ) -> Any:
+        import akshare as ak
+
+        return ak.stock_zh_a_disclosure_report_cninfo(
+            symbol=symbol,
+            market=market,
+            category=category,
+            start_date=start_date,
+            end_date=end_date,
         )

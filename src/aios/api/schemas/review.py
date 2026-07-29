@@ -29,6 +29,12 @@ class ReviewResponse(ApiSchema):
     outcome: Outcome
     cause_tags: tuple[str, ...]
     review_summary: str
+    success_reasons: tuple[str, ...] = Field(default_factory=tuple)
+    failure_reasons: tuple[str, ...] = Field(default_factory=tuple)
+    effective_evidence_ids: tuple[str, ...] = Field(default_factory=tuple)
+    effective_skill_ids: tuple[str, ...] = Field(default_factory=tuple)
+    mistaken_judgement_ids: tuple[str, ...] = Field(default_factory=tuple)
+    reference_ids: dict[str, list[str]] = Field(default_factory=dict)
     created_at: datetime
 
 

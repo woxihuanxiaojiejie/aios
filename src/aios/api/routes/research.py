@@ -1,23 +1,56 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable
 from datetime import UTC, date, datetime, timedelta
+from typing import Annotated
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Query, Response, status
 
-from aios.adapters.market_data import Adjustment
+from aios.adapters.llm import LLMAdapter
+from aios.adapters.market_data import Adjustment, MarketDataAdapter
+from aios.adapters.vibe_trading import VibeTradingResearchAdapter
 from aios.api.dependencies import (
     BaoStockMarketDataAdapterDep,
+    Brain002RegistryDep,
+    BrainEvidenceRepositoryDep,
     GenerationRecorderDep,
     LifecycleDep,
     LLMAdapterDep,
+    MarketDataAdapterDep,
+    VibeTradingAdapterDep,
+)
+from aios.api.schemas.brain002 import (
+    analysis_task_response,
+    skill_execution_response,
+    skill_result_response,
+)
+from aios.api.schemas.brain003 import discussion_result_response
+from aios.api.schemas.brain004 import decision_result_response
+from aios.api.schemas.common import ListResponse, page
+from aios.api.schemas.debate import (
+    DebateResponse,
+    DebateStatementCreateRequest,
+    DebateStatementResponse,
+    DecisionAssemblyResponse,
+    DecisionProposalCreateRequest,
+    DecisionProposalResponse,
+    RiskReviewCreateRequest,
+    RiskReviewResponse,
+    debate_response,
+    debate_statement_response,
+    decision_assembly_response,
+    decision_proposal_response,
+    risk_review_response,
 )
 from aios.api.schemas.decision import decision_response
 from aios.api.schemas.decision_generation import generation_metadata_response
 from aios.api.schemas.evidence import evidence_response
 from aios.api.schemas.experiment import ExperimentResponse, experiment_response
+from aios.api.schemas.learning import learning_response
 from aios.api.schemas.market_data import market_bar_response
 from aios.api.schemas.research import (
+    ResearchAssemblySettlementResponse,
     ResearchDecisionRequest,
     ResearchDecisionResponse,
     ResearchEvidenceRequest,
@@ -26,23 +59,781 @@ from aios.api.schemas.research import (
     ResearchHistoryResponse,
     ResearchHistoryRow,
     ResearchMarketResponse,
+    ResearchRunDetailResponse,
+    ResearchRunDiscussionResponse,
+    ResearchRunListItemResponse,
+    ResearchRunListResponse,
+    ResearchSchedulerRunOnceResponse,
     ResearchSettlementRequest,
     ResearchSettlementResponse,
+    RuntimeResearchResponse,
+    SchedulerErrorResponse,
+    SettlementSchedulerRunOnceResponse,
+    SimulatedExecutionResponse,
+    TradePlanResponse,
     decision_evaluation_response,
     decision_outcome_response,
+    research_assembly_settlement_response,
+    simulated_execution_response,
+    trade_plan_response,
+)
+from aios.api.schemas.research_records import (
+    AgentReportCreateRequest,
+    AgentReportResponse,
+    HypothesisCreateRequest,
+    HypothesisResponse,
+    HypothesisStatusUpdateRequest,
+    agent_report_response,
+    hypothesis_response,
+)
+from aios.api.schemas.research_run import (
+    ResearchRunCreateRequest,
+    ResearchRunResponse,
+    research_run_response,
+)
+from aios.api.schemas.research_session import (
+    ResearchSessionCreateRequest,
+    ResearchSessionResponse,
+    research_session_response,
 )
 from aios.api.schemas.review import review_response
+from aios.api.schemas.watchlist import (
+    WatchlistCreateRequest,
+    WatchlistItemResponse,
+    WatchlistUpdateRequest,
+    watchlist_item_response,
+)
+from aios.application.brain002 import SkillRegistry
+from aios.application.brain_research_pipeline import BrainEvidenceRepository
+from aios.application.business_views import BusinessViewService
+from aios.application.debate import DebateService
 from aios.application.decision_generation import DecisionGenerationService
 from aios.application.decision_settlement import DecisionSettlementService
+from aios.application.explorer import ExecutionSettlementExplorer
 from aios.application.market_evidence import MarketEvidenceImportService
+from aios.application.research_lifecycle import ResearchLifecycleService
+from aios.application.research_records import ResearchRecordService
+from aios.application.research_runner import ResearchRunner
+from aios.application.research_runtime import (
+    ResearchRuntimeResult,
+    ResearchRuntimeService,
+)
+from aios.application.research_scheduler import ResearchSchedulerService
+from aios.application.research_session import ResearchSessionService
+from aios.application.research_settlement import ResearchSettlementService
+from aios.application.settlement import SettlementService
+from aios.application.settlement_scheduler import SettlementSchedulerService
+from aios.application.simulated_execution import SimulatedExecutionService
+from aios.application.test_data_filter import should_include_test_data
+from aios.application.trade_plan import TradePlanService
+from aios.application.watchlist import WatchlistService
+from aios.integrations.trading_calendar import MarketTradingCalendar
+from aios.kernel.base import KernelModel
+from aios.kernel.debate import DebateStatement
 from aios.kernel.decision import Decision
-from aios.kernel.errors import EvaluationConfigurationError
+from aios.kernel.enums import (
+    AgentReportStatus,
+    AgentRole,
+    HypothesisStatus,
+    ResearchSessionStatus,
+    WatchlistStatus,
+)
+from aios.kernel.errors import EvaluationConfigurationError, MissingEntityError
 from aios.kernel.evidence import Evidence
+from aios.kernel.execution import SimulatedExecution
 from aios.kernel.experiment import Experiment
+from aios.kernel.research import ResearchSession
+from aios.kernel.research_run import ResearchRun
 from aios.kernel.review import Review
 from aios.kernel.settlement import DecisionOutcome
+from aios.kernel.trade_plan import TradePlan
+from aios.kernel.watchlist import WatchlistItem
+from aios.workflows.decision_lifecycle import DecisionLifecycleService
 
 router = APIRouter(prefix="/research", tags=["research"])
+
+WATCHLIST_STATUS_QUERY = Query(default=WatchlistStatus.ACTIVE, alias="status")
+WATCHLIST_MARKET_QUERY = Query(default=None, min_length=1)
+WATCHLIST_SYMBOL_QUERY = Query(default=None, min_length=1)
+SESSION_STATUS_QUERY = Query(default=None, alias="status")
+SESSION_MARKET_QUERY = Query(default=None, min_length=1)
+SESSION_SYMBOL_QUERY = Query(default=None, min_length=1)
+REPORT_STATUS_QUERY = Query(default=None, alias="status")
+REPORT_ROLE_QUERY = Query(default=None)
+HYPOTHESIS_STATUS_QUERY = Query(default=None, alias="status")
+
+
+@router.post(
+    "/runs",
+    response_model=ResearchRunResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def run_research(
+    request: ResearchRunCreateRequest,
+    lifecycle: LifecycleDep,
+    adapter: MarketDataAdapterDep,
+    vibe_adapter: VibeTradingAdapterDep,
+    llm_adapter: LLMAdapterDep,
+    registry: Brain002RegistryDep,
+    brain_evidence_repository: BrainEvidenceRepositoryDep,
+) -> ResearchRunResponse:
+    run = ResearchRunner(
+        lifecycle=lifecycle,
+        market_data_adapter=adapter,
+        vibe_trading_adapter=vibe_adapter,
+        llm_adapter=llm_adapter,
+        brain002_registry=registry,
+        brain_evidence_repository=brain_evidence_repository,
+    ).run_research(**request.model_dump())
+    return research_run_response(run)
+
+
+@router.get("/runs", response_model=ResearchRunListResponse)
+def list_research_runs(
+    lifecycle: LifecycleDep,
+    watchlist_item_id: Annotated[str | None, Query(min_length=1)] = None,
+    status_filter: Annotated[str | None, Query(alias="status")] = None,
+    symbol: Annotated[str | None, Query(min_length=1)] = None,
+    market: Annotated[str | None, Query(min_length=1)] = None,
+    workflow: Annotated[str | None, Query(min_length=1)] = None,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
+    sort: str = "-created_at",
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    include_test_data: bool = False,
+) -> ResearchRunListResponse:
+    runs = lifecycle.storage.list_research_runs(
+        watchlist_item_id=watchlist_item_id,
+        status=status_filter,
+    )
+    rows = [
+        _research_run_list_item(lifecycle, run)
+        for run in runs
+        if should_include_test_data(
+            run,
+            include_test_data=include_test_data,
+        )
+        and _run_matches(
+            run=run,
+            lifecycle=lifecycle,
+            symbol=symbol,
+            market=market,
+            workflow=workflow,
+            created_from=created_from,
+            created_to=created_to,
+        )
+    ]
+    rows = _sort_run_rows(rows, sort)
+    return ResearchRunListResponse(
+        items=rows[offset : offset + limit],
+        total=len(rows),
+        limit=limit,
+        offset=offset,
+        count=len(rows[offset : offset + limit]),
+    )
+
+
+@router.get("/runs/{run_id}/detail", response_model=ResearchRunDetailResponse)
+def get_research_run_detail(
+    run_id: str,
+    lifecycle: LifecycleDep,
+) -> ResearchRunDetailResponse:
+    run = lifecycle.storage.get(ResearchRun, run_id)
+    downstream = ExecutionSettlementExplorer(lifecycle.storage).research_run_detail(
+        run_id
+    )
+    watchlist_item = _optional_get(
+        lifecycle,
+        WatchlistItem,
+        run.watchlist_item_id,
+    )
+    session = (
+        _optional_get(lifecycle, ResearchSession, run.research_session_id)
+        if run.research_session_id
+        else None
+    )
+    evidence = _detail_evidence(lifecycle, session)
+    reports = (
+        lifecycle.storage.list_agent_reports(
+            research_session_id=session.research_session_id
+        )
+        if session
+        else []
+    )
+    hypotheses = (
+        lifecycle.storage.list_hypotheses(
+            research_session_id=session.research_session_id
+        )
+        if session
+        else []
+    )
+    discussion = _detail_discussion(lifecycle, session)
+    decision = _detail_decision(lifecycle, session)
+    trade_plan = (
+        lifecycle.storage.get_trade_plan_by_decision_id(decision.decision_id)
+        if decision
+        else None
+    )
+    brain_records = BusinessViewService(lifecycle.storage).brain_records_for_session(
+        session,
+        decision,
+    )
+    return ResearchRunDetailResponse(
+        run=research_run_response(run),
+        watchlist_item=(
+            watchlist_item_response(watchlist_item) if watchlist_item else None
+        ),
+        session=research_session_response(session) if session else None,
+        evidence=[evidence_response(item) for item in evidence],
+        skill_reports=[agent_report_response(report) for report in reports],
+        hypotheses=[hypothesis_response(hypothesis) for hypothesis in hypotheses],
+        analysis_task=(
+            analysis_task_response(brain_records.analysis_task)
+            if brain_records.analysis_task
+            else None
+        ),
+        skill_executions=[
+            skill_execution_response(item) for item in brain_records.skill_executions
+        ],
+        skill_results=[
+            skill_result_response(item) for item in brain_records.skill_results
+        ],
+        discussion_result=(
+            discussion_result_response(brain_records.discussion_result)
+            if brain_records.discussion_result
+            else None
+        ),
+        decision_result=(
+            decision_result_response(brain_records.decision_result)
+            if brain_records.decision_result
+            else None
+        ),
+        discussion=discussion,
+        decision=decision_response(decision) if decision else None,
+        trade_plan=trade_plan_response(trade_plan) if trade_plan else None,
+        simulated_execution=(
+            simulated_execution_response(downstream.simulated_execution)
+            if downstream.simulated_execution
+            else None
+        ),
+        settlement=(
+            decision_outcome_response(downstream.settlement)
+            if downstream.settlement
+            else None
+        ),
+        evaluation=(
+            decision_evaluation_response(downstream.evaluation)
+            if downstream.evaluation
+            else None
+        ),
+        review=review_response(downstream.review) if downstream.review else None,
+        learning_proposals=[
+            learning_response(learning) for learning in downstream.learning_proposals
+        ],
+    )
+
+
+@router.get("/runs/{run_id}", response_model=ResearchRunResponse)
+def get_research_run(
+    run_id: str,
+    lifecycle: LifecycleDep,
+) -> ResearchRunResponse:
+    run = lifecycle.storage.get(ResearchRun, run_id)
+    return research_run_response(run)
+
+
+@router.post(
+    "/watchlist/{item_id}/run",
+    response_model=RuntimeResearchResponse,
+)
+def run_watchlist_research(
+    item_id: str,
+    lifecycle: LifecycleDep,
+    adapter: MarketDataAdapterDep,
+    vibe_adapter: VibeTradingAdapterDep,
+    llm_adapter: LLMAdapterDep,
+    registry: Brain002RegistryDep,
+    brain_evidence_repository: BrainEvidenceRepositoryDep,
+) -> RuntimeResearchResponse:
+    item = WatchlistService(lifecycle.storage).get_item(item_id)
+    result = _runtime(
+        lifecycle=lifecycle,
+        adapter=adapter,
+        vibe_adapter=vibe_adapter,
+        llm_adapter=llm_adapter,
+        registry=registry,
+        brain_evidence_repository=brain_evidence_repository,
+    ).run_watchlist_item(
+        watchlist_item_id=item.watchlist_item_id,
+        horizon_days=item.research_horizon_days,
+        as_of=datetime.now(UTC),
+        workflow="investment_committee",
+        provider=os.getenv("AIOS_RESEARCH_PROVIDER", "deepseek"),
+        model=os.getenv("AIOS_RESEARCH_MODEL", "deepseek/deepseek-chat"),
+    )
+    return _runtime_research_response(result)
+
+
+@router.post(
+    "/scheduler/run-once",
+    response_model=ResearchSchedulerRunOnceResponse,
+)
+def run_research_scheduler_once(
+    lifecycle: LifecycleDep,
+    adapter: MarketDataAdapterDep,
+    vibe_adapter: VibeTradingAdapterDep,
+    llm_adapter: LLMAdapterDep,
+    registry: Brain002RegistryDep,
+    brain_evidence_repository: BrainEvidenceRepositoryDep,
+) -> ResearchSchedulerRunOnceResponse:
+    result = ResearchSchedulerService(
+        storage=lifecycle.storage,
+        runtime=_runtime(
+            lifecycle=lifecycle,
+            adapter=adapter,
+            vibe_adapter=vibe_adapter,
+            llm_adapter=llm_adapter,
+            registry=registry,
+            brain_evidence_repository=brain_evidence_repository,
+        ),
+        trading_calendar=MarketTradingCalendar(),
+        workflow="investment_committee",
+        provider=os.getenv("AIOS_RESEARCH_PROVIDER", "deepseek"),
+        model=os.getenv("AIOS_RESEARCH_MODEL", "deepseek/deepseek-chat"),
+    ).run_due_once(as_of=datetime.now(UTC))
+    return ResearchSchedulerRunOnceResponse(
+        runs=[research_run_response(run) for run in result.runs],
+        errors=[
+            SchedulerErrorResponse(
+                id=error.watchlist_item_id,
+                error_type=error.error_type,
+                error_message=error.error_message,
+            )
+            for error in result.errors
+        ],
+    )
+
+
+@router.post(
+    "/settlement/run-once",
+    response_model=SettlementSchedulerRunOnceResponse,
+)
+def run_settlement_scheduler_once(
+    lifecycle: LifecycleDep,
+    adapter: MarketDataAdapterDep,
+) -> SettlementSchedulerRunOnceResponse:
+    result = SettlementSchedulerService(
+        storage=lifecycle.storage,
+        market_data_adapter=adapter,
+    ).run_due_once(as_of=datetime.now(UTC))
+    return SettlementSchedulerRunOnceResponse(
+        settled=len(result.settled),
+        errors=[
+            SchedulerErrorResponse(
+                id=error.execution_id,
+                error_type=error.error_type,
+                error_message=error.error_message,
+            )
+            for error in result.errors
+        ],
+    )
+
+
+@router.post("/runs/{run_id}/resume", response_model=ResearchRunResponse)
+def resume_research_run(
+    run_id: str,
+    lifecycle: LifecycleDep,
+    adapter: MarketDataAdapterDep,
+    vibe_adapter: VibeTradingAdapterDep,
+    llm_adapter: LLMAdapterDep,
+    registry: Brain002RegistryDep,
+    brain_evidence_repository: BrainEvidenceRepositoryDep,
+) -> ResearchRunResponse:
+    run = ResearchRunner(
+        lifecycle=lifecycle,
+        market_data_adapter=adapter,
+        vibe_trading_adapter=vibe_adapter,
+        llm_adapter=llm_adapter,
+        brain002_registry=registry,
+        brain_evidence_repository=brain_evidence_repository,
+    ).resume_research(run_id)
+    return research_run_response(run)
+
+
+@router.post(
+    "/watchlist",
+    response_model=WatchlistItemResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def add_watchlist_item(
+    request: WatchlistCreateRequest,
+    lifecycle: LifecycleDep,
+) -> WatchlistItemResponse:
+    item = WatchlistService(lifecycle.storage).add_item(**request.model_dump())
+    return watchlist_item_response(item)
+
+
+@router.get("/watchlist", response_model=ListResponse[WatchlistItemResponse])
+def list_watchlist_items(
+    lifecycle: LifecycleDep,
+    status_filter: WatchlistStatus | None = WATCHLIST_STATUS_QUERY,
+    market: str | None = WATCHLIST_MARKET_QUERY,
+    symbol: str | None = WATCHLIST_SYMBOL_QUERY,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> ListResponse[WatchlistItemResponse]:
+    items = [
+        watchlist_item_response(item)
+        for item in WatchlistService(lifecycle.storage).list_items(
+            status=status_filter,
+            market=market,
+            symbol=symbol,
+        )
+    ]
+    return page(items, limit, offset)
+
+
+@router.get("/watchlist/{item_id}", response_model=WatchlistItemResponse)
+def get_watchlist_item(
+    item_id: str,
+    lifecycle: LifecycleDep,
+) -> WatchlistItemResponse:
+    item = WatchlistService(lifecycle.storage).get_item(item_id)
+    return watchlist_item_response(item)
+
+
+@router.patch("/watchlist/{item_id}", response_model=WatchlistItemResponse)
+def update_watchlist_item(
+    item_id: str,
+    request: WatchlistUpdateRequest,
+    lifecycle: LifecycleDep,
+) -> WatchlistItemResponse:
+    updates = request.model_dump(exclude_unset=True)
+    item = WatchlistService(lifecycle.storage).update_item(item_id, **updates)
+    return watchlist_item_response(item)
+
+
+@router.post("/watchlist/{item_id}/archive", response_model=WatchlistItemResponse)
+def archive_watchlist_item(
+    item_id: str,
+    lifecycle: LifecycleDep,
+) -> WatchlistItemResponse:
+    item = WatchlistService(lifecycle.storage).archive_item(item_id)
+    return watchlist_item_response(item)
+
+
+@router.post("/watchlist/{item_id}/restore", response_model=WatchlistItemResponse)
+def restore_watchlist_item(
+    item_id: str,
+    lifecycle: LifecycleDep,
+) -> WatchlistItemResponse:
+    item = WatchlistService(lifecycle.storage).restore_item(item_id)
+    return watchlist_item_response(item)
+
+
+@router.post(
+    "/sessions",
+    response_model=ResearchSessionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_research_session(
+    request: ResearchSessionCreateRequest,
+    lifecycle: LifecycleDep,
+) -> ResearchSessionResponse:
+    session = ResearchSessionService(lifecycle.storage).create_session(
+        **request.model_dump()
+    )
+    return research_session_response(session)
+
+
+@router.get("/sessions", response_model=ListResponse[ResearchSessionResponse])
+def list_research_sessions(
+    lifecycle: LifecycleDep,
+    watchlist_item_id: str | None = Query(default=None, min_length=1),
+    status_filter: ResearchSessionStatus | None = SESSION_STATUS_QUERY,
+    market: str | None = SESSION_MARKET_QUERY,
+    symbol: str | None = SESSION_SYMBOL_QUERY,
+    horizon_days: int | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> ListResponse[ResearchSessionResponse]:
+    sessions = [
+        research_session_response(session)
+        for session in ResearchSessionService(lifecycle.storage).list_sessions(
+            watchlist_item_id=watchlist_item_id,
+            symbol=symbol,
+            market=market,
+            status=status_filter,
+            horizon_days=horizon_days,
+        )
+    ]
+    return page(sessions, limit, offset)
+
+
+@router.get("/sessions/{session_id}", response_model=ResearchSessionResponse)
+def get_research_session(
+    session_id: str,
+    lifecycle: LifecycleDep,
+) -> ResearchSessionResponse:
+    session = ResearchSessionService(lifecycle.storage).get_session(session_id)
+    return research_session_response(session)
+
+
+@router.post("/sessions/{session_id}/cancel", response_model=ResearchSessionResponse)
+def cancel_research_session(
+    session_id: str,
+    lifecycle: LifecycleDep,
+) -> ResearchSessionResponse:
+    session = ResearchSessionService(lifecycle.storage).cancel_session(session_id)
+    return research_session_response(session)
+
+
+@router.post(
+    "/sessions/{session_id}/agent-reports",
+    response_model=AgentReportResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_agent_report(
+    session_id: str,
+    request: AgentReportCreateRequest,
+    lifecycle: LifecycleDep,
+) -> AgentReportResponse:
+    report = ResearchRecordService(lifecycle.storage).create_agent_report(
+        research_session_id=session_id,
+        **request.model_dump(),
+    )
+    return agent_report_response(report)
+
+
+@router.get(
+    "/sessions/{session_id}/agent-reports",
+    response_model=ListResponse[AgentReportResponse],
+)
+def list_agent_reports(
+    session_id: str,
+    lifecycle: LifecycleDep,
+    role: AgentRole | None = REPORT_ROLE_QUERY,
+    status_filter: AgentReportStatus | None = REPORT_STATUS_QUERY,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> ListResponse[AgentReportResponse]:
+    reports = [
+        agent_report_response(report)
+        for report in ResearchRecordService(lifecycle.storage).list_agent_reports(
+            research_session_id=session_id,
+            role=role,
+            status=status_filter,
+        )
+    ]
+    return page(reports, limit, offset)
+
+
+@router.get("/agent-reports/{report_id}", response_model=AgentReportResponse)
+def get_agent_report(
+    report_id: str,
+    lifecycle: LifecycleDep,
+) -> AgentReportResponse:
+    report = ResearchRecordService(lifecycle.storage).get_agent_report(report_id)
+    return agent_report_response(report)
+
+
+@router.post("/agent-reports/{report_id}/archive", response_model=AgentReportResponse)
+def archive_agent_report(
+    report_id: str,
+    lifecycle: LifecycleDep,
+) -> AgentReportResponse:
+    report = ResearchRecordService(lifecycle.storage).archive_agent_report(report_id)
+    return agent_report_response(report)
+
+
+@router.post(
+    "/sessions/{session_id}/hypotheses",
+    response_model=HypothesisResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_hypothesis(
+    session_id: str,
+    request: HypothesisCreateRequest,
+    lifecycle: LifecycleDep,
+) -> HypothesisResponse:
+    hypothesis = ResearchRecordService(lifecycle.storage).create_hypothesis(
+        research_session_id=session_id,
+        **request.model_dump(),
+    )
+    return hypothesis_response(hypothesis)
+
+
+@router.get(
+    "/sessions/{session_id}/hypotheses",
+    response_model=ListResponse[HypothesisResponse],
+)
+def list_hypotheses(
+    session_id: str,
+    lifecycle: LifecycleDep,
+    status_filter: HypothesisStatus | None = HYPOTHESIS_STATUS_QUERY,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> ListResponse[HypothesisResponse]:
+    hypotheses = [
+        hypothesis_response(hypothesis)
+        for hypothesis in ResearchRecordService(lifecycle.storage).list_hypotheses(
+            research_session_id=session_id,
+            status=status_filter,
+        )
+    ]
+    return page(hypotheses, limit, offset)
+
+
+@router.get("/hypotheses/{hypothesis_id}", response_model=HypothesisResponse)
+def get_hypothesis(
+    hypothesis_id: str,
+    lifecycle: LifecycleDep,
+) -> HypothesisResponse:
+    hypothesis = ResearchRecordService(lifecycle.storage).get_hypothesis(hypothesis_id)
+    return hypothesis_response(hypothesis)
+
+
+@router.post("/hypotheses/{hypothesis_id}/status", response_model=HypothesisResponse)
+def update_hypothesis_status(
+    hypothesis_id: str,
+    request: HypothesisStatusUpdateRequest,
+    lifecycle: LifecycleDep,
+) -> HypothesisResponse:
+    hypothesis = ResearchRecordService(lifecycle.storage).update_hypothesis_status(
+        hypothesis_id,
+        request.status,
+    )
+    return hypothesis_response(hypothesis)
+
+
+@router.post(
+    "/sessions/{session_id}/debates",
+    response_model=DebateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_debate(
+    session_id: str,
+    lifecycle: LifecycleDep,
+) -> DebateResponse:
+    debate = DebateService(lifecycle.storage).create_debate(
+        research_session_id=session_id
+    )
+    return debate_response(debate)
+
+
+@router.get(
+    "/sessions/{session_id}/debates",
+    response_model=ListResponse[DebateResponse],
+)
+def list_debates(
+    session_id: str,
+    lifecycle: LifecycleDep,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> ListResponse[DebateResponse]:
+    debates = [
+        debate_response(debate)
+        for debate in DebateService(lifecycle.storage).list_debates(
+            research_session_id=session_id
+        )
+    ]
+    return page(debates, limit, offset)
+
+
+@router.get("/debates/{debate_id}", response_model=DebateResponse)
+def get_debate(
+    debate_id: str,
+    lifecycle: LifecycleDep,
+) -> DebateResponse:
+    debate = DebateService(lifecycle.storage).get_debate(debate_id)
+    return debate_response(debate)
+
+
+@router.post(
+    "/debates/{debate_id}/statements",
+    response_model=DebateStatementResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def add_debate_statement(
+    debate_id: str,
+    request: DebateStatementCreateRequest,
+    lifecycle: LifecycleDep,
+) -> DebateStatementResponse:
+    statement = DebateService(lifecycle.storage).add_debate_statement(
+        debate_id=debate_id,
+        **request.model_dump(),
+    )
+    return debate_statement_response(statement)
+
+
+@router.post(
+    "/debates/{debate_id}/proposal",
+    response_model=DecisionProposalResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def assemble_decision_proposal(
+    debate_id: str,
+    request: DecisionProposalCreateRequest,
+    lifecycle: LifecycleDep,
+) -> DecisionProposalResponse:
+    proposal = DebateService(lifecycle.storage).assemble_decision_proposal(
+        debate_id=debate_id,
+        **request.model_dump(),
+    )
+    return decision_proposal_response(proposal)
+
+
+@router.post(
+    "/proposals/{proposal_id}/risk-review",
+    response_model=RiskReviewResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def submit_risk_review(
+    proposal_id: str,
+    request: RiskReviewCreateRequest,
+    lifecycle: LifecycleDep,
+) -> RiskReviewResponse:
+    review = DebateService(lifecycle.storage).submit_risk_review(
+        proposal_id=proposal_id,
+        **request.model_dump(),
+    )
+    return risk_review_response(review)
+
+
+@router.post(
+    "/proposals/{proposal_id}/finalize",
+    response_model=DecisionAssemblyResponse,
+)
+def finalize_decision(
+    proposal_id: str,
+    lifecycle: LifecycleDep,
+) -> DecisionAssemblyResponse:
+    assembly = DebateService(lifecycle.storage).finalize_decision(proposal_id)
+    return decision_assembly_response(assembly)
+
+
+@router.post(
+    "/assemblies/{assembly_id}/settlement",
+    response_model=ResearchAssemblySettlementResponse,
+)
+def settle_research_assembly(
+    assembly_id: str,
+    request: ResearchSettlementRequest,
+    lifecycle: LifecycleDep,
+    adapter: MarketDataAdapterDep,
+) -> ResearchAssemblySettlementResponse:
+    result = ResearchSettlementService(
+        lifecycle=lifecycle,
+        market_data_adapter=adapter,
+    ).settle_assembly(assembly_id=assembly_id, as_of=request.as_of)
+    return research_assembly_settlement_response(
+        record=result.record,
+        outcome=result.outcome,
+        evaluation=result.evaluation,
+        review=review_response(result.review),
+        learnings=result.learnings,
+    )
 
 
 @router.get("/market", response_model=ResearchMarketResponse)
@@ -172,6 +963,91 @@ def run_research_decision(
 
 
 @router.post(
+    "/decisions/{decision_id}/trade-plan",
+    response_model=TradePlanResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_trade_plan(
+    decision_id: str,
+    response: Response,
+    lifecycle: LifecycleDep,
+) -> TradePlanResponse:
+    existing = lifecycle.storage.get_trade_plan_by_decision_id(decision_id)
+    plan = TradePlanService(lifecycle).create_from_decision(decision_id)
+    if existing is not None:
+        response.status_code = status.HTTP_200_OK
+    return trade_plan_response(plan)
+
+
+@router.get("/trade-plans/{trade_plan_id}", response_model=TradePlanResponse)
+def get_trade_plan(
+    trade_plan_id: str,
+    lifecycle: LifecycleDep,
+) -> TradePlanResponse:
+    plan = lifecycle.get_entity(TradePlan, trade_plan_id)
+    return trade_plan_response(plan)
+
+
+@router.post(
+    "/trade-plans/{trade_plan_id}/simulated-execution",
+    response_model=SimulatedExecutionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_simulated_execution(
+    trade_plan_id: str,
+    response: Response,
+    lifecycle: LifecycleDep,
+    adapter: MarketDataAdapterDep,
+) -> SimulatedExecutionResponse:
+    existing = lifecycle.storage.get_simulated_execution_by_trade_plan_id(trade_plan_id)
+    execution = SimulatedExecutionService(
+        lifecycle=ResearchLifecycleService(lifecycle.storage),
+        market_data_adapter=adapter,
+    ).execute_trade_plan(trade_plan_id)
+    if existing is not None:
+        response.status_code = status.HTTP_200_OK
+    return simulated_execution_response(execution)
+
+
+@router.get(
+    "/simulated-executions/{execution_id}",
+    response_model=SimulatedExecutionResponse,
+)
+def get_simulated_execution(
+    execution_id: str,
+    lifecycle: LifecycleDep,
+) -> SimulatedExecutionResponse:
+    execution = lifecycle.storage.get(SimulatedExecution, execution_id)
+    return simulated_execution_response(execution)
+
+
+@router.post(
+    "/simulated-executions/{execution_id}/settlement",
+    response_model=ResearchSettlementResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def settle_simulated_execution(
+    execution_id: str,
+    response: Response,
+    lifecycle: LifecycleDep,
+    adapter: MarketDataAdapterDep,
+) -> ResearchSettlementResponse:
+    existing = lifecycle.storage.get_settlement_outcome_by_execution_id(execution_id)
+    result = SettlementService(
+        lifecycle=ResearchLifecycleService(lifecycle.storage),
+        market_data_adapter=adapter,
+    ).settle_execution(execution_id)
+    if existing is not None:
+        response.status_code = status.HTTP_200_OK
+    return ResearchSettlementResponse(
+        outcome=decision_outcome_response(result.outcome),
+        evaluation=decision_evaluation_response(result.evaluation),
+        review=review_response(result.review),
+        learning_proposal=learning_response(result.learning_proposal),
+    )
+
+
+@router.post(
     "/settlements/{decision_id}",
     response_model=ResearchSettlementResponse,
     status_code=status.HTTP_201_CREATED,
@@ -242,6 +1118,163 @@ def research_history(
     )
 
 
+def _research_run_list_item(
+    lifecycle: DecisionLifecycleService,
+    run: ResearchRun,
+) -> ResearchRunListItemResponse:
+    watchlist_item = _optional_get(lifecycle, WatchlistItem, run.watchlist_item_id)
+    decision = _run_decision(lifecycle, run)
+    return ResearchRunListItemResponse(
+        **research_run_response(run).model_dump(),
+        market=watchlist_item.market if watchlist_item else None,
+        trigger_method=str(run.input_params.get("trigger_method") or run.workflow),
+        final_decision=decision.action.value if decision else None,
+        confidence=decision.confidence if decision else None,
+    )
+
+
+def _run_matches(
+    *,
+    run: ResearchRun,
+    lifecycle: DecisionLifecycleService,
+    symbol: str | None,
+    market: str | None,
+    workflow: str | None,
+    created_from: datetime | None,
+    created_to: datetime | None,
+) -> bool:
+    if symbol is not None and run.symbol != symbol:
+        return False
+    if workflow is not None and run.workflow != workflow:
+        return False
+    if created_from is not None and run.created_at < created_from:
+        return False
+    if created_to is not None and run.created_at > created_to:
+        return False
+    if market is None:
+        return True
+    watchlist_item = _optional_get(lifecycle, WatchlistItem, run.watchlist_item_id)
+    return watchlist_item is not None and watchlist_item.market == market
+
+
+def _sort_run_rows(
+    rows: list[ResearchRunListItemResponse],
+    sort: str,
+) -> list[ResearchRunListItemResponse]:
+    descending = sort.startswith("-")
+    field = sort.removeprefix("-")
+    if field not in {"created_at", "updated_at", "finished_at", "status", "symbol"}:
+        field = "created_at"
+        descending = True
+    return sorted(
+        rows,
+        key=lambda row: (getattr(row, field) is None, getattr(row, field), row.run_id),
+        reverse=descending,
+    )
+
+
+def _detail_evidence(
+    lifecycle: DecisionLifecycleService,
+    session: ResearchSession | None,
+) -> list[Evidence]:
+    if session is None:
+        return []
+    by_id = {item.evidence_id: item for item in lifecycle.list_entities(Evidence)}
+    return [
+        by_id[evidence_id]
+        for evidence_id in session.evidence_ids
+        if evidence_id in by_id
+    ]
+
+
+def _detail_discussion(
+    lifecycle: DecisionLifecycleService,
+    session: ResearchSession | None,
+) -> ResearchRunDiscussionResponse:
+    if session is None:
+        return ResearchRunDiscussionResponse(
+            debates=[],
+            statements=[],
+            proposal=None,
+            risk_review=None,
+            assembly=None,
+        )
+    debates = lifecycle.storage.list_debates(
+        research_session_id=session.research_session_id
+    )
+    debate_ids = {debate.debate_id for debate in debates}
+    statements = [
+        statement
+        for statement in lifecycle.list_entities(DebateStatement)
+        if statement.debate_id in debate_ids
+    ]
+    proposal = _first_not_none(
+        lifecycle.storage.get_decision_proposal_by_debate_id(debate.debate_id)
+        for debate in reversed(debates)
+    )
+    risk_review = (
+        lifecycle.storage.get_risk_review_by_proposal_id(proposal.proposal_id)
+        if proposal
+        else None
+    )
+    assembly = (
+        lifecycle.storage.get_decision_assembly_by_proposal_id(proposal.proposal_id)
+        if proposal
+        else None
+    )
+    return ResearchRunDiscussionResponse(
+        debates=[debate_response(debate) for debate in debates],
+        statements=[debate_statement_response(statement) for statement in statements],
+        proposal=decision_proposal_response(proposal) if proposal else None,
+        risk_review=risk_review_response(risk_review) if risk_review else None,
+        assembly=decision_assembly_response(assembly) if assembly else None,
+    )
+
+
+def _detail_decision(
+    lifecycle: DecisionLifecycleService,
+    session: ResearchSession | None,
+) -> Decision | None:
+    if session is None:
+        return None
+    decisions = [
+        decision
+        for decision in lifecycle.list_entities(Decision)
+        if decision.research_session_id == session.research_session_id
+    ]
+    return decisions[-1] if decisions else None
+
+
+def _run_decision(
+    lifecycle: DecisionLifecycleService,
+    run: ResearchRun,
+) -> Decision | None:
+    if run.research_session_id is None:
+        return None
+    return _detail_decision(
+        lifecycle,
+        _optional_get(lifecycle, ResearchSession, run.research_session_id),
+    )
+
+
+def _optional_get[TEntity: KernelModel](
+    lifecycle: DecisionLifecycleService,
+    entity_type: type[TEntity],
+    entity_id: str,
+) -> TEntity | None:
+    try:
+        return lifecycle.storage.get(entity_type, entity_id)
+    except MissingEntityError:
+        return None
+
+
+def _first_not_none[TEntity](items: Iterable[TEntity | None]) -> TEntity | None:
+    for item in items:
+        if item is not None:
+            return item
+    return None
+
+
 def _history_rows(
     decisions: list[Decision],
     outcomes: list[DecisionOutcome],
@@ -278,6 +1311,39 @@ def _latest_by_id(items: list[Evidence], ids: list[str]) -> Evidence | None:
 
 def _ids(items: list[Evidence]) -> list[str]:
     return [item.evidence_id for item in items]
+
+
+def _runtime(
+    *,
+    lifecycle: DecisionLifecycleService,
+    adapter: MarketDataAdapter,
+    vibe_adapter: VibeTradingResearchAdapter,
+    llm_adapter: LLMAdapter,
+    registry: SkillRegistry,
+    brain_evidence_repository: BrainEvidenceRepository | None,
+) -> ResearchRuntimeService:
+    return ResearchRuntimeService(
+        lifecycle=lifecycle,
+        market_data_adapter=adapter,
+        vibe_trading_adapter=vibe_adapter,
+        llm_adapter=llm_adapter,
+        brain002_registry=registry,
+        brain_evidence_repository=brain_evidence_repository,
+    )
+
+
+def _runtime_research_response(
+    result: ResearchRuntimeResult,
+) -> RuntimeResearchResponse:
+    return RuntimeResearchResponse(
+        run=research_run_response(result.run),
+        trade_plan=trade_plan_response(result.trade_plan)
+        if result.trade_plan is not None
+        else None,
+        simulated_execution=simulated_execution_response(result.execution)
+        if result.execution is not None
+        else None,
+    )
 
 
 def _today() -> date:

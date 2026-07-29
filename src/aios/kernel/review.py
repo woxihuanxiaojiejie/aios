@@ -21,6 +21,12 @@ class Review(KernelModel):
     outcome: Outcome
     cause_tags: tuple[str, ...] = Field(default_factory=tuple)
     review_summary: str = Field(min_length=1)
+    success_reasons: tuple[str, ...] = Field(default_factory=tuple)
+    failure_reasons: tuple[str, ...] = Field(default_factory=tuple)
+    effective_evidence_ids: tuple[str, ...] = Field(default_factory=tuple)
+    effective_skill_ids: tuple[str, ...] = Field(default_factory=tuple)
+    mistaken_judgement_ids: tuple[str, ...] = Field(default_factory=tuple)
+    reference_ids: dict[str, list[str]] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=utc_now)
 
     @field_validator("created_at")

@@ -64,6 +64,10 @@ class DecisionLifecycleService:
     ) -> list[EntityT]:
         return self._storage.list(entity_type)
 
+    @property
+    def storage(self) -> Storage:
+        return self._storage
+
     def create_decision(self, decision: Decision) -> Decision:
         self._require_exists(Experiment, decision.experiment_id)
         experiment = self._storage.get(Experiment, decision.experiment_id)
@@ -150,6 +154,9 @@ class DecisionLifecycleService:
 
     def reject_learning(self, learning_id: str) -> Learning:
         return self._decide_learning(learning_id, ApprovalStatus.REJECTED)
+
+    def defer_learning(self, learning_id: str) -> Learning:
+        return self._decide_learning(learning_id, ApprovalStatus.DEFERRED)
 
     def _require_exists(self, entity_type: type[KernelModel], entity_id: str) -> None:
         if not self._storage.exists(entity_type, entity_id):

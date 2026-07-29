@@ -1,39 +1,127 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy.orm import DeclarativeBase
 
 from aios.kernel.base import KernelModel, ensure_utc
+from aios.kernel.brain002 import (
+    AnalysisTask,
+    SkillDefinition,
+    SkillExecution,
+    SkillResult,
+    TokenUsage,
+)
+from aios.kernel.brain003 import (
+    ConflictReview,
+    CounterArgument,
+    DiscussionExecution,
+    DiscussionResult,
+    EvidenceReview,
+    RevisionSuggestion,
+)
+from aios.kernel.brain004 import (
+    DecisionExecution,
+    DecisionResult,
+    DirectionRejection,
+    ReferencedReason,
+    RiskNote,
+)
+from aios.kernel.debate import (
+    DebateRecord,
+    DebateStatement,
+    DecisionAssemblyRecord,
+    DecisionProposal,
+    RiskReview,
+)
 from aios.kernel.decision import Decision
 from aios.kernel.enums import (
     Action,
+    AgentReportStatus,
+    AgentRole,
     ApprovalStatus,
+    DebateStance,
+    DebateStatus,
+    DecisionDirection,
     DecisionStatus,
     DirectionalResult,
     EvaluationFinalResult,
+    EvaluationScore,
+    ExecutionExitReason,
+    ExecutionStatus,
     ExperimentStatus,
+    HypothesisStatus,
     LearningType,
     Outcome,
     OutcomeStatus,
+    ResearchConclusion,
+    ResearchSessionStatus,
     ReturnResult,
     RiskResult,
+    RiskVerdict,
+    SkillDirection,
+    SkillExecutionStatus,
+    SkillStatus,
+    TradePlanStatus,
+    WatchlistStatus,
 )
 from aios.kernel.errors import UnsupportedEntityError
 from aios.kernel.evidence import Evidence
+from aios.kernel.execution import SimulatedExecution
 from aios.kernel.experiment import Experiment
 from aios.kernel.learning import Learning
+from aios.kernel.research import ResearchScope, ResearchSession, ResearchTransitionEvent
+from aios.kernel.research_records import AgentReport, Hypothesis
+from aios.kernel.research_run import ResearchRun, ResearchRunStage, ResearchRunStatus
 from aios.kernel.review import Review
-from aios.kernel.settlement import DecisionEvaluation, DecisionOutcome
+from aios.kernel.scheduler_runtime import (
+    SchedulerJobRun,
+    SchedulerJobStatus,
+    SchedulerRuntime,
+)
+from aios.kernel.settlement import (
+    DecisionEvaluation,
+    DecisionOutcome,
+    ResearchSettlementRecord,
+)
+from aios.kernel.trade_plan import TradePlan
+from aios.kernel.watchlist import WatchlistItem
 from aios.storage.postgres.models import (
+    AgentReportEvidenceRecord,
+    AgentReportRecord,
+    AnalysisTaskRecord,
+    DebateRecordModel,
+    DebateStatementRecord,
+    DecisionAssemblyRecordModel,
     DecisionEvaluationRecord,
+    DecisionExecutionRecord,
     DecisionOutcomeRecord,
+    DecisionProposalRecord,
     DecisionRecord,
+    DecisionResultRecord,
+    DiscussionExecutionRecord,
+    DiscussionResultRecord,
     EvidenceRecord,
     ExperimentRecord,
+    HypothesisEvidenceRecord,
+    HypothesisRecord,
+    HypothesisReportRecord,
     LearningRecord,
+    ResearchRunRecord,
+    ResearchSessionEvidenceRecord,
+    ResearchSessionRecord,
+    ResearchSettlementRecordModel,
     ReviewRecord,
+    RiskReviewRecord,
+    SchedulerJobRunRecord,
+    SchedulerRuntimeRecord,
+    SimulatedExecutionRecord,
+    SkillDefinitionRecord,
+    SkillExecutionRecord,
+    SkillResultRecord,
+    TradePlanRecord,
+    WatchlistItemRecord,
 )
 
 type Record = (
@@ -44,10 +132,187 @@ type Record = (
     | LearningRecord
     | DecisionOutcomeRecord
     | DecisionEvaluationRecord
+    | DecisionExecutionRecord
+    | DecisionResultRecord
+    | ResearchSettlementRecordModel
+    | WatchlistItemRecord
+    | ResearchSessionRecord
+    | AgentReportRecord
+    | HypothesisRecord
+    | DebateRecordModel
+    | DebateStatementRecord
+    | DecisionProposalRecord
+    | RiskReviewRecord
+    | DecisionAssemblyRecordModel
+    | ResearchSettlementRecordModel
+    | ResearchRunRecord
+    | SchedulerRuntimeRecord
+    | SchedulerJobRunRecord
+    | SkillDefinitionRecord
+    | AnalysisTaskRecord
+    | SkillExecutionRecord
+    | SkillResultRecord
+    | DiscussionExecutionRecord
+    | DiscussionResultRecord
+    | DecisionExecutionRecord
+    | DecisionResultRecord
+    | TradePlanRecord
+    | SimulatedExecutionRecord
 )
 
 
 def to_model(entity: KernelModel) -> Record:
+    if isinstance(entity, SkillDefinition):
+        return SkillDefinitionRecord(
+            definition_id=entity.definition_id,
+            skill_id=entity.skill_id,
+            name=entity.name,
+            version=entity.version,
+            description=entity.description,
+            supported_markets=list(entity.supported_markets),
+            supported_asset_types=list(entity.supported_asset_types),
+            supported_horizons=list(entity.supported_horizons),
+            required_evidence_types=list(entity.required_evidence_types),
+            input_schema=entity.input_schema,
+            output_schema=entity.output_schema,
+            trigger_conditions=entity.trigger_conditions,
+            dependencies=list(entity.dependencies),
+            conflicts=list(entity.conflicts),
+            status=entity.status.value,
+            created_at=entity.created_at,
+            updated_at=entity.updated_at,
+        )
+    if isinstance(entity, AnalysisTask):
+        return AnalysisTaskRecord(
+            task_id=entity.task_id,
+            symbol=entity.symbol,
+            market=entity.market,
+            asset_type=entity.asset_type,
+            horizon=entity.horizon,
+            as_of=entity.as_of,
+            evidence_ids=list(entity.evidence_ids),
+            user_constraints=entity.user_constraints,
+            requested_skill_ids=list(entity.requested_skill_ids),
+            created_at=entity.created_at,
+        )
+    if isinstance(entity, SkillExecution):
+        return SkillExecutionRecord(
+            execution_id=entity.execution_id,
+            task_id=entity.task_id,
+            skill_id=entity.skill_id,
+            skill_version=entity.skill_version,
+            started_at=entity.started_at,
+            finished_at=entity.finished_at,
+            status=entity.status.value,
+            provider=entity.provider,
+            model=entity.model,
+            prompt_version=entity.prompt_version,
+            token_usage=entity.token_usage.model_dump(mode="json"),
+            latency_ms=entity.latency_ms,
+            retry_count=entity.retry_count,
+            error=entity.error,
+        )
+    if isinstance(entity, SkillResult):
+        return SkillResultRecord(
+            result_id=entity.result_id,
+            execution_id=entity.execution_id,
+            skill_id=entity.skill_id,
+            skill_version=entity.skill_version,
+            conclusion=entity.conclusion,
+            direction=entity.direction.value,
+            confidence=entity.confidence,
+            supporting_evidence_ids=list(entity.supporting_evidence_ids),
+            contradicting_evidence_ids=list(entity.contradicting_evidence_ids),
+            assumptions=list(entity.assumptions),
+            risk_factors=list(entity.risk_factors),
+            invalid_conditions=list(entity.invalid_conditions),
+            missing_information=list(entity.missing_information),
+            reasoning_summary=entity.reasoning_summary,
+            raw_output=entity.raw_output,
+            created_at=entity.created_at,
+        )
+    if isinstance(entity, DiscussionExecution):
+        return DiscussionExecutionRecord(
+            discussion_execution_id=entity.discussion_execution_id,
+            task_id=entity.task_id,
+            skill_result_ids=list(entity.skill_result_ids),
+            started_at=entity.started_at,
+            finished_at=entity.finished_at,
+            status=entity.status.value,
+            provider=entity.provider,
+            model=entity.model,
+            prompt_version=entity.prompt_version,
+            token_usage=entity.token_usage.model_dump(mode="json"),
+            latency_ms=entity.latency_ms,
+            retry_count=entity.retry_count,
+            raw_response=entity.raw_response,
+            parsed_response=entity.parsed_response,
+            error=entity.error,
+            created_at=entity.created_at,
+        )
+    if isinstance(entity, DiscussionResult):
+        return DiscussionResultRecord(
+            discussion_result_id=entity.discussion_result_id,
+            discussion_execution_id=entity.discussion_execution_id,
+            task_id=entity.task_id,
+            skill_result_ids=list(entity.skill_result_ids),
+            conflicts=[item.model_dump(mode="json") for item in entity.conflicts],
+            evidence_reviews=[
+                item.model_dump(mode="json") for item in entity.evidence_reviews
+            ],
+            counter_arguments=[
+                item.model_dump(mode="json") for item in entity.counter_arguments
+            ],
+            revision_suggestions=[
+                item.model_dump(mode="json") for item in entity.revision_suggestions
+            ],
+            discussion_summary=entity.discussion_summary,
+            discussion_confidence=entity.discussion_confidence,
+            created_at=entity.created_at,
+        )
+    if isinstance(entity, DecisionExecution):
+        return DecisionExecutionRecord(
+            decision_execution_id=entity.decision_execution_id,
+            task_id=entity.task_id,
+            discussion_result_id=entity.discussion_result_id,
+            skill_result_ids=list(entity.skill_result_ids),
+            evidence_ids=list(entity.evidence_ids),
+            started_at=entity.started_at,
+            finished_at=entity.finished_at,
+            status=entity.status.value,
+            provider=entity.provider,
+            model=entity.model,
+            prompt_version=entity.prompt_version,
+            token_usage=entity.token_usage.model_dump(mode="json"),
+            latency_ms=entity.latency_ms,
+            retry_count=entity.retry_count,
+            raw_response=entity.raw_response,
+            parsed_response=entity.parsed_response,
+            error=entity.error,
+            created_at=entity.created_at,
+        )
+    if isinstance(entity, DecisionResult):
+        return DecisionResultRecord(
+            decision_result_id=entity.decision_result_id,
+            decision_execution_id=entity.decision_execution_id,
+            task_id=entity.task_id,
+            discussion_result_id=entity.discussion_result_id,
+            skill_result_ids=list(entity.skill_result_ids),
+            direction=entity.direction.value,
+            confidence=entity.confidence,
+            action=entity.action.value,
+            reasoning=[item.model_dump(mode="json") for item in entity.reasoning],
+            supporting_skills=list(entity.supporting_skills),
+            opposing_skills=list(entity.opposing_skills),
+            discussion_refs=list(entity.discussion_refs),
+            evidence_refs=list(entity.evidence_refs),
+            risks=[item.model_dump(mode="json") for item in entity.risks],
+            rejected_directions=[
+                item.model_dump(mode="json") for item in entity.rejected_directions
+            ],
+            decision_summary=entity.decision_summary,
+            created_at=entity.created_at,
+        )
     if isinstance(entity, Evidence):
         return EvidenceRecord(
             evidence_id=entity.evidence_id,
@@ -60,6 +325,20 @@ def to_model(entity: KernelModel) -> Record:
             reliability=entity.reliability,
             content_hash=entity.content_hash,
             metadata_json=entity.metadata,
+            title=entity.title,
+            raw_content=entity.raw_content,
+            raw_response=entity.raw_response,
+            source_type=entity.source_type,
+            source_identifier=entity.source_identifier,
+            source_url=entity.source_url,
+            collected_at=entity.collected_at,
+            entities=entity.entities,
+            fingerprint=entity.fingerprint,
+            credibility=entity.credibility,
+            freshness=entity.freshness,
+            processing_status=entity.processing_status,
+            parse_error=entity.parse_error,
+            legacy_brain_evidence_id=entity.legacy_brain_evidence_id,
             created_at=entity.created_at,
         )
     if isinstance(entity, Experiment):
@@ -92,6 +371,80 @@ def to_model(entity: KernelModel) -> Record:
             status=entity.status.value,
             created_at=entity.created_at,
             valid_until=entity.valid_until,
+            research_session_id=entity.research_session_id,
+            decision_result_id=entity.decision_result_id,
+            risk_review_id=entity.risk_review_id,
+            direction=entity.direction.value if entity.direction else None,
+            original_direction=(
+                entity.original_direction.value if entity.original_direction else None
+            ),
+            target_range=list(entity.target_range) if entity.target_range else None,
+            entry_conditions=list(entity.entry_conditions),
+            invalidation_conditions=list(entity.invalidation_conditions),
+            stop_loss=entity.stop_loss,
+            position_suggestion=entity.position_suggestion,
+            risk_factors=list(entity.risk_factors),
+            supporting_skill_ids=list(entity.supporting_skill_ids),
+            dissenting_opinions=list(entity.dissenting_opinions),
+            market_regime=entity.market_regime,
+            generated_at=entity.generated_at,
+            planned_settlement_at=entity.planned_settlement_at,
+            unavailable_fields=list(entity.unavailable_fields),
+            downgrade_reasons=list(entity.downgrade_reasons),
+        )
+    if isinstance(entity, TradePlan):
+        return TradePlanRecord(
+            trade_plan_id=entity.trade_plan_id,
+            decision_id=entity.decision_id,
+            research_session_id=entity.research_session_id,
+            symbol=entity.symbol,
+            direction=entity.direction.value,
+            status=entity.status.value,
+            planned_entry=list(entity.planned_entry),
+            entry_conditions=list(entity.entry_conditions),
+            target=list(entity.target) if entity.target else None,
+            stop_loss=entity.stop_loss,
+            invalidation_conditions=list(entity.invalidation_conditions),
+            planned_position=entity.planned_position,
+            horizon=entity.horizon,
+            expiry=entity.expiry,
+            fee_model=entity.fee_model,
+            slippage_model=entity.slippage_model,
+            unavailable_fields=list(entity.unavailable_fields),
+            no_trade_reasons=list(entity.no_trade_reasons),
+            created_at=entity.created_at,
+            updated_at=entity.updated_at,
+        )
+    if isinstance(entity, SimulatedExecution):
+        execution_date = (
+            datetime.combine(
+                entity.execution_date,
+                datetime.min.time().replace(tzinfo=entity.created_at.tzinfo),
+            )
+            if entity.execution_date is not None
+            else None
+        )
+        return SimulatedExecutionRecord(
+            execution_id=entity.execution_id,
+            trade_plan_id=entity.trade_plan_id,
+            decision_id=entity.decision_id,
+            research_session_id=entity.research_session_id,
+            symbol=entity.symbol,
+            direction=entity.direction.value,
+            execution_status=entity.execution_status.value,
+            execution_date=execution_date,
+            market_bar_id=entity.market_bar_id,
+            market_data_source=entity.market_data_source,
+            planned_entry=entity.planned_entry,
+            executed_entry=entity.executed_entry,
+            executed_exit=entity.executed_exit,
+            position_size=entity.position_size,
+            fee=entity.fee,
+            slippage=entity.slippage,
+            realized_return=entity.realized_return,
+            exit_reason=entity.exit_reason.value,
+            created_at=entity.created_at,
+            updated_at=entity.updated_at,
         )
     if isinstance(entity, DecisionOutcome):
         return DecisionOutcomeRecord(
@@ -112,6 +465,14 @@ def to_model(entity: KernelModel) -> Record:
             market_data_snapshot=entity.market_data_snapshot,
             settled_at=entity.settled_at,
             status=entity.status.value,
+            execution_id=entity.execution_id,
+            trade_plan_id=entity.trade_plan_id,
+            research_session_id=entity.research_session_id,
+            pnl=entity.pnl,
+            return_rate=entity.return_rate,
+            holding_days=entity.holding_days,
+            exit_reason=entity.exit_reason.value if entity.exit_reason else None,
+            max_drawdown=entity.max_drawdown,
             created_at=entity.created_at,
         )
     if isinstance(entity, DecisionEvaluation):
@@ -127,6 +488,57 @@ def to_model(entity: KernelModel) -> Record:
             evaluation_rules_version=entity.evaluation_rules_version,
             evaluated_at=entity.evaluated_at,
             explanation=entity.explanation,
+            prediction_accuracy=(
+                entity.prediction_accuracy.value if entity.prediction_accuracy else None
+            ),
+            timing_accuracy=(
+                entity.timing_accuracy.value if entity.timing_accuracy else None
+            ),
+            risk_control=entity.risk_control.value if entity.risk_control else None,
+            execution_quality=(
+                entity.execution_quality.value if entity.execution_quality else None
+            ),
+            created_at=entity.created_at,
+        )
+    if isinstance(entity, ResearchSettlementRecord):
+        return ResearchSettlementRecordModel(
+            research_settlement_id=entity.research_settlement_id,
+            assembly_id=entity.assembly_id,
+            research_session_id=entity.research_session_id,
+            debate_id=entity.debate_id,
+            proposal_id=entity.proposal_id,
+            risk_review_id=entity.risk_review_id,
+            decision_id=entity.decision_id,
+            outcome_id=entity.outcome_id,
+            evaluation_id=entity.evaluation_id,
+            review_id=entity.review_id,
+            learning_ids=list(entity.learning_ids),
+            evidence_ids=list(entity.evidence_ids),
+            report_ids=list(entity.report_ids),
+            hypothesis_ids=list(entity.hypothesis_ids),
+            settled_at=entity.settled_at,
+            created_at=entity.created_at,
+        )
+    if isinstance(entity, SchedulerRuntime):
+        return SchedulerRuntimeRecord(
+            scheduler_instance_id=entity.scheduler_instance_id,
+            started_at=entity.started_at,
+            last_heartbeat_at=entity.last_heartbeat_at,
+            updated_at=entity.updated_at,
+        )
+    if isinstance(entity, SchedulerJobRun):
+        return SchedulerJobRunRecord(
+            job_run_id=entity.job_run_id,
+            job_id=entity.job_id,
+            status=entity.status,
+            started_at=entity.started_at,
+            completed_at=entity.completed_at,
+            processed_count=entity.processed_count,
+            success_count=entity.success_count,
+            failure_count=entity.failure_count,
+            result_message=entity.result_message,
+            error_type=entity.error_type,
+            error_message=entity.error_message,
             created_at=entity.created_at,
         )
     if isinstance(entity, Review):
@@ -139,6 +551,12 @@ def to_model(entity: KernelModel) -> Record:
             outcome=entity.outcome.value,
             cause_tags=list(entity.cause_tags),
             review_summary=entity.review_summary,
+            success_reasons=list(entity.success_reasons),
+            failure_reasons=list(entity.failure_reasons),
+            effective_evidence_ids=list(entity.effective_evidence_ids),
+            effective_skill_ids=list(entity.effective_skill_ids),
+            mistaken_judgement_ids=list(entity.mistaken_judgement_ids),
+            reference_ids=entity.reference_ids,
             created_at=entity.created_at,
         )
     if isinstance(entity, Learning):
@@ -153,11 +571,359 @@ def to_model(entity: KernelModel) -> Record:
             approval_status=entity.approval_status.value,
             created_at=entity.created_at,
         )
+    if isinstance(entity, WatchlistItem):
+        return WatchlistItemRecord(
+            watchlist_item_id=entity.watchlist_item_id,
+            symbol=entity.symbol,
+            market=entity.market,
+            note=entity.note,
+            status=entity.status.value,
+            auto_research_enabled=entity.auto_research_enabled,
+            research_horizon_days=entity.research_horizon_days,
+            schedule_time=entity.schedule_time,
+            schedule_timezone=entity.schedule_timezone,
+            next_run_at=entity.next_run_at,
+            last_run_at=entity.last_run_at,
+            created_at=entity.created_at,
+            updated_at=entity.updated_at,
+            archived_at=entity.archived_at,
+        )
+    if isinstance(entity, ResearchSession):
+        return ResearchSessionRecord(
+            research_session_id=entity.research_session_id,
+            watchlist_item_id=entity.scope.watchlist_item_id,
+            symbol=entity.scope.symbol,
+            market=entity.scope.market,
+            watchlist_note_snapshot=entity.scope.watchlist_note_snapshot,
+            horizon_days=entity.scope.horizon_days,
+            as_of=entity.scope.as_of,
+            valid_until=entity.scope.valid_until,
+            status=entity.status.value,
+            experiment_id=entity.experiment_id,
+            cancelled_at=entity.cancelled_at,
+            failure_stage=entity.failure_stage,
+            failure_error=entity.failure_error,
+            retry_count=entity.retry_count,
+            transition_log=[
+                event.model_dump(mode="json") for event in entity.transition_log
+            ],
+            created_at=entity.created_at,
+            updated_at=entity.updated_at,
+            evidence_links=[
+                ResearchSessionEvidenceRecord(
+                    research_session_id=entity.research_session_id,
+                    evidence_id=evidence_id,
+                    position=position,
+                )
+                for position, evidence_id in enumerate(entity.evidence_ids)
+            ],
+        )
+    if isinstance(entity, AgentReport):
+        return AgentReportRecord(
+            report_id=entity.report_id,
+            research_session_id=entity.research_session_id,
+            role=entity.role.value,
+            summary=entity.summary,
+            stance=entity.stance,
+            confidence=entity.confidence,
+            source=entity.source,
+            raw_reference=entity.raw_reference,
+            status=entity.status.value,
+            archived_at=entity.archived_at,
+            created_at=entity.created_at,
+            updated_at=entity.updated_at,
+            evidence_links=[
+                AgentReportEvidenceRecord(
+                    report_id=entity.report_id,
+                    evidence_id=evidence_id,
+                    position=position,
+                )
+                for position, evidence_id in enumerate(entity.evidence_ids)
+            ],
+        )
+    if isinstance(entity, Hypothesis):
+        return HypothesisRecord(
+            hypothesis_id=entity.hypothesis_id,
+            research_session_id=entity.research_session_id,
+            statement=entity.statement,
+            rationale=entity.rationale,
+            direction=entity.direction,
+            horizon_days=entity.horizon_days,
+            confidence=entity.confidence,
+            status=entity.status.value,
+            created_at=entity.created_at,
+            updated_at=entity.updated_at,
+            report_links=[
+                HypothesisReportRecord(
+                    hypothesis_id=entity.hypothesis_id,
+                    report_id=report_id,
+                    position=position,
+                )
+                for position, report_id in enumerate(entity.supporting_report_ids)
+            ],
+            evidence_links=[
+                HypothesisEvidenceRecord(
+                    hypothesis_id=entity.hypothesis_id,
+                    evidence_id=evidence_id,
+                    position=position,
+                )
+                for position, evidence_id in enumerate(entity.supporting_evidence_ids)
+            ],
+        )
+    if isinstance(entity, DebateRecord):
+        return DebateRecordModel(
+            debate_id=entity.debate_id,
+            research_session_id=entity.research_session_id,
+            report_ids=list(entity.report_ids),
+            hypothesis_ids=list(entity.hypothesis_ids),
+            status=entity.status.value,
+            final_decision_id=entity.final_decision_id,
+            created_at=entity.created_at,
+            updated_at=entity.updated_at,
+        )
+    if isinstance(entity, DebateStatement):
+        return DebateStatementRecord(
+            statement_id=entity.statement_id,
+            debate_id=entity.debate_id,
+            agent_report_id=entity.agent_report_id,
+            hypothesis_id=entity.hypothesis_id,
+            stance=entity.stance.value,
+            reasoning=entity.reasoning,
+            evidence_ids=list(entity.evidence_ids),
+            confidence_before=entity.confidence_before,
+            confidence_after=entity.confidence_after,
+            created_at=entity.created_at,
+        )
+    if isinstance(entity, DecisionProposal):
+        return DecisionProposalRecord(
+            proposal_id=entity.proposal_id,
+            debate_id=entity.debate_id,
+            conclusion=entity.conclusion.value,
+            confidence=entity.confidence,
+            thesis=entity.thesis,
+            supporting_hypothesis_ids=list(entity.supporting_hypothesis_ids),
+            rejected_hypothesis_ids=list(entity.rejected_hypothesis_ids),
+            evidence_ids=list(entity.evidence_ids),
+            risk_notes=list(entity.risk_notes),
+            created_at=entity.created_at,
+        )
+    if isinstance(entity, RiskReview):
+        return RiskReviewRecord(
+            risk_review_id=entity.risk_review_id,
+            proposal_id=entity.proposal_id,
+            verdict=entity.verdict.value,
+            final_conclusion=entity.final_conclusion.value,
+            final_confidence=entity.final_confidence,
+            reasons=list(entity.reasons),
+            confidence_delta=entity.confidence_delta,
+            adjusted_position=entity.adjusted_position,
+            condition_changes=list(entity.condition_changes),
+            converted_to_no_trade=entity.converted_to_no_trade,
+            research_session_id=entity.research_session_id,
+            decision_result_id=entity.decision_result_id,
+            discussion_result_id=entity.discussion_result_id,
+            skill_result_ids=list(entity.skill_result_ids),
+            evidence_ids=list(entity.evidence_ids),
+            supporting_arguments=list(entity.supporting_arguments),
+            opposing_arguments=list(entity.opposing_arguments),
+            created_at=entity.created_at,
+        )
+    if isinstance(entity, DecisionAssemblyRecord):
+        return DecisionAssemblyRecordModel(
+            assembly_id=entity.assembly_id,
+            research_session_id=entity.research_session_id,
+            debate_id=entity.debate_id,
+            proposal_id=entity.proposal_id,
+            risk_review_id=entity.risk_review_id,
+            decision_id=entity.decision_id,
+            conclusion=entity.conclusion.value,
+            report_ids=list(entity.report_ids),
+            hypothesis_ids=list(entity.hypothesis_ids),
+            evidence_ids=list(entity.evidence_ids),
+            created_at=entity.created_at,
+        )
+    if isinstance(entity, ResearchRun):
+        return ResearchRunRecord(
+            run_id=entity.run_id,
+            research_session_id=entity.research_session_id,
+            watchlist_item_id=entity.watchlist_item_id,
+            symbol=entity.symbol,
+            research_window_key=entity.research_window_key,
+            current_stage=entity.current_stage,
+            status=entity.status,
+            vibe_run_id=entity.vibe_run_id,
+            workflow=entity.workflow,
+            input_params=entity.input_params,
+            raw_output_reference=entity.raw_output_reference,
+            failed_stage=entity.failed_stage,
+            error_type=entity.error_type,
+            error=entity.error,
+            finished_at=entity.finished_at,
+            created_at=entity.created_at,
+            updated_at=entity.updated_at,
+        )
     msg = f"{type(entity).__name__} is not supported by PostgreSQL mapper"
     raise UnsupportedEntityError(msg)
 
 
 def model_to_entity(model: DeclarativeBase) -> KernelModel:
+    if isinstance(model, SkillDefinitionRecord):
+        return SkillDefinition(
+            definition_id=model.definition_id,
+            skill_id=model.skill_id,
+            name=model.name,
+            version=model.version,
+            description=model.description,
+            supported_markets=tuple(model.supported_markets),
+            supported_asset_types=tuple(model.supported_asset_types),
+            supported_horizons=tuple(model.supported_horizons),
+            required_evidence_types=tuple(model.required_evidence_types),
+            input_schema=model.input_schema,
+            output_schema=model.output_schema,
+            trigger_conditions=model.trigger_conditions,
+            dependencies=tuple(model.dependencies),
+            conflicts=tuple(model.conflicts),
+            status=SkillStatus(model.status),
+            created_at=_utc(model.created_at),
+            updated_at=_utc(model.updated_at),
+        )
+    if isinstance(model, AnalysisTaskRecord):
+        return AnalysisTask(
+            task_id=model.task_id,
+            symbol=model.symbol,
+            market=model.market,
+            asset_type=model.asset_type,
+            horizon=model.horizon,
+            as_of=_utc(model.as_of),
+            evidence_ids=tuple(model.evidence_ids),
+            user_constraints=model.user_constraints,
+            requested_skill_ids=tuple(model.requested_skill_ids),
+            created_at=_utc(model.created_at),
+        )
+    if isinstance(model, SkillExecutionRecord):
+        return SkillExecution(
+            execution_id=model.execution_id,
+            task_id=model.task_id,
+            skill_id=model.skill_id,
+            skill_version=model.skill_version,
+            started_at=_utc(model.started_at),
+            finished_at=_utc(model.finished_at) if model.finished_at else None,
+            status=SkillExecutionStatus(model.status),
+            provider=model.provider,
+            model=model.model,
+            prompt_version=model.prompt_version,
+            token_usage=TokenUsage.model_validate(model.token_usage),
+            latency_ms=model.latency_ms,
+            retry_count=model.retry_count,
+            error=model.error,
+        )
+    if isinstance(model, SkillResultRecord):
+        return SkillResult(
+            result_id=model.result_id,
+            execution_id=model.execution_id,
+            skill_id=model.skill_id,
+            skill_version=model.skill_version,
+            conclusion=model.conclusion,
+            direction=SkillDirection(model.direction),
+            confidence=model.confidence,
+            supporting_evidence_ids=tuple(model.supporting_evidence_ids),
+            contradicting_evidence_ids=tuple(model.contradicting_evidence_ids),
+            assumptions=tuple(model.assumptions),
+            risk_factors=tuple(model.risk_factors),
+            invalid_conditions=tuple(model.invalid_conditions),
+            missing_information=tuple(model.missing_information),
+            reasoning_summary=model.reasoning_summary,
+            raw_output=model.raw_output,
+            created_at=_utc(model.created_at),
+        )
+    if isinstance(model, DiscussionExecutionRecord):
+        return DiscussionExecution(
+            discussion_execution_id=model.discussion_execution_id,
+            task_id=model.task_id,
+            skill_result_ids=tuple(model.skill_result_ids),
+            started_at=_utc(model.started_at),
+            finished_at=_utc(model.finished_at) if model.finished_at else None,
+            status=SkillExecutionStatus(model.status),
+            provider=model.provider,
+            model=model.model,
+            prompt_version=model.prompt_version,
+            token_usage=TokenUsage.model_validate(model.token_usage),
+            latency_ms=model.latency_ms,
+            retry_count=model.retry_count,
+            raw_response=model.raw_response,
+            parsed_response=model.parsed_response,
+            error=model.error,
+            created_at=_utc(model.created_at),
+        )
+    if isinstance(model, DiscussionResultRecord):
+        return DiscussionResult(
+            discussion_result_id=model.discussion_result_id,
+            discussion_execution_id=model.discussion_execution_id,
+            task_id=model.task_id,
+            skill_result_ids=tuple(model.skill_result_ids),
+            conflicts=tuple(
+                ConflictReview.model_validate(item) for item in model.conflicts
+            ),
+            evidence_reviews=tuple(
+                EvidenceReview.model_validate(item) for item in model.evidence_reviews
+            ),
+            counter_arguments=tuple(
+                CounterArgument.model_validate(item) for item in model.counter_arguments
+            ),
+            revision_suggestions=tuple(
+                RevisionSuggestion.model_validate(item)
+                for item in model.revision_suggestions
+            ),
+            discussion_summary=model.discussion_summary,
+            discussion_confidence=model.discussion_confidence,
+            created_at=_utc(model.created_at),
+        )
+    if isinstance(model, DecisionExecutionRecord):
+        return DecisionExecution(
+            decision_execution_id=model.decision_execution_id,
+            task_id=model.task_id,
+            discussion_result_id=model.discussion_result_id,
+            skill_result_ids=tuple(model.skill_result_ids),
+            evidence_ids=tuple(model.evidence_ids),
+            started_at=_utc(model.started_at),
+            finished_at=_utc(model.finished_at) if model.finished_at else None,
+            status=SkillExecutionStatus(model.status),
+            provider=model.provider,
+            model=model.model,
+            prompt_version=model.prompt_version,
+            token_usage=TokenUsage.model_validate(model.token_usage),
+            latency_ms=model.latency_ms,
+            retry_count=model.retry_count,
+            raw_response=model.raw_response,
+            parsed_response=model.parsed_response,
+            error=model.error,
+            created_at=_utc(model.created_at),
+        )
+    if isinstance(model, DecisionResultRecord):
+        return DecisionResult(
+            decision_result_id=model.decision_result_id,
+            decision_execution_id=model.decision_execution_id,
+            task_id=model.task_id,
+            discussion_result_id=model.discussion_result_id,
+            skill_result_ids=tuple(model.skill_result_ids),
+            direction=DecisionDirection(model.direction),
+            confidence=model.confidence,
+            action=Action(model.action),
+            reasoning=tuple(
+                ReferencedReason.model_validate(item) for item in model.reasoning
+            ),
+            supporting_skills=tuple(model.supporting_skills),
+            opposing_skills=tuple(model.opposing_skills),
+            discussion_refs=tuple(model.discussion_refs),
+            evidence_refs=tuple(model.evidence_refs),
+            risks=tuple(RiskNote.model_validate(item) for item in model.risks),
+            rejected_directions=tuple(
+                DirectionRejection.model_validate(item)
+                for item in model.rejected_directions
+            ),
+            decision_summary=model.decision_summary,
+            created_at=_utc(model.created_at),
+        )
     if isinstance(model, EvidenceRecord):
         return Evidence(
             evidence_id=model.evidence_id,
@@ -170,6 +936,20 @@ def model_to_entity(model: DeclarativeBase) -> KernelModel:
             reliability=model.reliability,
             content_hash=model.content_hash,
             metadata=model.metadata_json,
+            title=model.title,
+            raw_content=model.raw_content,
+            raw_response=model.raw_response,
+            source_type=model.source_type,
+            source_identifier=model.source_identifier,
+            source_url=model.source_url,
+            collected_at=_utc(model.collected_at) if model.collected_at else None,
+            entities=model.entities,
+            fingerprint=model.fingerprint,
+            credibility=model.credibility,
+            freshness=model.freshness,
+            processing_status=model.processing_status,
+            parse_error=model.parse_error,
+            legacy_brain_evidence_id=model.legacy_brain_evidence_id,
             created_at=_utc(model.created_at),
         )
     if isinstance(model, ExperimentRecord):
@@ -202,6 +982,84 @@ def model_to_entity(model: DeclarativeBase) -> KernelModel:
             status=DecisionStatus(model.status),
             created_at=_utc(model.created_at),
             valid_until=_utc(model.valid_until),
+            research_session_id=model.research_session_id,
+            decision_result_id=model.decision_result_id,
+            risk_review_id=model.risk_review_id,
+            direction=DecisionDirection(model.direction) if model.direction else None,
+            original_direction=(
+                DecisionDirection(model.original_direction)
+                if model.original_direction
+                else None
+            ),
+            target_range=(
+                (model.target_range[0], model.target_range[1])
+                if model.target_range
+                else None
+            ),
+            entry_conditions=tuple(model.entry_conditions),
+            invalidation_conditions=tuple(model.invalidation_conditions),
+            stop_loss=model.stop_loss,
+            position_suggestion=model.position_suggestion,
+            risk_factors=tuple(model.risk_factors),
+            supporting_skill_ids=tuple(model.supporting_skill_ids),
+            dissenting_opinions=tuple(model.dissenting_opinions),
+            market_regime=model.market_regime,
+            generated_at=_utc(model.generated_at) if model.generated_at else None,
+            planned_settlement_at=(
+                _utc(model.planned_settlement_at)
+                if model.planned_settlement_at
+                else None
+            ),
+            unavailable_fields=tuple(model.unavailable_fields),
+            downgrade_reasons=tuple(model.downgrade_reasons),
+        )
+    if isinstance(model, TradePlanRecord):
+        return TradePlan(
+            trade_plan_id=model.trade_plan_id,
+            decision_id=model.decision_id,
+            research_session_id=model.research_session_id,
+            symbol=model.symbol,
+            direction=DecisionDirection(model.direction),
+            status=TradePlanStatus(model.status),
+            planned_entry=tuple(model.planned_entry),
+            entry_conditions=tuple(model.entry_conditions),
+            target=(model.target[0], model.target[1]) if model.target else None,
+            stop_loss=model.stop_loss,
+            invalidation_conditions=tuple(model.invalidation_conditions),
+            planned_position=model.planned_position,
+            horizon=model.horizon,
+            expiry=_utc(model.expiry),
+            fee_model=model.fee_model,
+            slippage_model=model.slippage_model,
+            unavailable_fields=tuple(model.unavailable_fields),
+            no_trade_reasons=tuple(model.no_trade_reasons),
+            created_at=_utc(model.created_at),
+            updated_at=_utc(model.updated_at),
+        )
+    if isinstance(model, SimulatedExecutionRecord):
+        return SimulatedExecution(
+            execution_id=model.execution_id,
+            trade_plan_id=model.trade_plan_id,
+            decision_id=model.decision_id,
+            research_session_id=model.research_session_id,
+            symbol=model.symbol,
+            direction=DecisionDirection(model.direction),
+            execution_status=ExecutionStatus(model.execution_status),
+            execution_date=(
+                model.execution_date.date() if model.execution_date else None
+            ),
+            market_bar_id=model.market_bar_id,
+            market_data_source=model.market_data_source,
+            planned_entry=model.planned_entry,
+            executed_entry=model.executed_entry,
+            executed_exit=model.executed_exit,
+            position_size=model.position_size,
+            fee=model.fee,
+            slippage=model.slippage,
+            realized_return=model.realized_return,
+            exit_reason=ExecutionExitReason(model.exit_reason),
+            created_at=_utc(model.created_at),
+            updated_at=_utc(model.updated_at),
         )
     if isinstance(model, DecisionOutcomeRecord):
         return DecisionOutcome(
@@ -222,6 +1080,16 @@ def model_to_entity(model: DeclarativeBase) -> KernelModel:
             market_data_snapshot=model.market_data_snapshot,
             settled_at=_utc(model.settled_at),
             status=OutcomeStatus(model.status),
+            execution_id=model.execution_id,
+            trade_plan_id=model.trade_plan_id,
+            research_session_id=model.research_session_id,
+            pnl=model.pnl,
+            return_rate=model.return_rate,
+            holding_days=model.holding_days,
+            exit_reason=(
+                ExecutionExitReason(model.exit_reason) if model.exit_reason else None
+            ),
+            max_drawdown=model.max_drawdown,
             created_at=_utc(model.created_at),
         )
     if isinstance(model, DecisionEvaluationRecord):
@@ -237,6 +1105,65 @@ def model_to_entity(model: DeclarativeBase) -> KernelModel:
             evaluation_rules_version=model.evaluation_rules_version,
             evaluated_at=_utc(model.evaluated_at),
             explanation=model.explanation,
+            prediction_accuracy=(
+                EvaluationScore(model.prediction_accuracy)
+                if model.prediction_accuracy
+                else None
+            ),
+            timing_accuracy=(
+                EvaluationScore(model.timing_accuracy)
+                if model.timing_accuracy
+                else None
+            ),
+            risk_control=(
+                EvaluationScore(model.risk_control) if model.risk_control else None
+            ),
+            execution_quality=(
+                EvaluationScore(model.execution_quality)
+                if model.execution_quality
+                else None
+            ),
+            created_at=_utc(model.created_at),
+        )
+    if isinstance(model, ResearchSettlementRecordModel):
+        return ResearchSettlementRecord(
+            research_settlement_id=model.research_settlement_id,
+            assembly_id=model.assembly_id,
+            research_session_id=model.research_session_id,
+            debate_id=model.debate_id,
+            proposal_id=model.proposal_id,
+            risk_review_id=model.risk_review_id,
+            decision_id=model.decision_id,
+            outcome_id=model.outcome_id,
+            evaluation_id=model.evaluation_id,
+            review_id=model.review_id,
+            learning_ids=tuple(model.learning_ids),
+            evidence_ids=tuple(model.evidence_ids),
+            report_ids=tuple(model.report_ids),
+            hypothesis_ids=tuple(model.hypothesis_ids),
+            settled_at=_utc(model.settled_at),
+            created_at=_utc(model.created_at),
+        )
+    if isinstance(model, SchedulerRuntimeRecord):
+        return SchedulerRuntime(
+            scheduler_instance_id=model.scheduler_instance_id,
+            started_at=_utc(model.started_at),
+            last_heartbeat_at=_utc(model.last_heartbeat_at),
+            updated_at=_utc(model.updated_at),
+        )
+    if isinstance(model, SchedulerJobRunRecord):
+        return SchedulerJobRun(
+            job_run_id=model.job_run_id,
+            job_id=model.job_id,
+            status=cast("SchedulerJobStatus", model.status),
+            started_at=_utc(model.started_at),
+            completed_at=_utc(model.completed_at),
+            processed_count=model.processed_count,
+            success_count=model.success_count,
+            failure_count=model.failure_count,
+            result_message=model.result_message,
+            error_type=model.error_type,
+            error_message=model.error_message,
             created_at=_utc(model.created_at),
         )
     if isinstance(model, ReviewRecord):
@@ -249,6 +1176,12 @@ def model_to_entity(model: DeclarativeBase) -> KernelModel:
             outcome=Outcome(model.outcome),
             cause_tags=tuple(model.cause_tags),
             review_summary=model.review_summary,
+            success_reasons=tuple(model.success_reasons or ()),
+            failure_reasons=tuple(model.failure_reasons or ()),
+            effective_evidence_ids=tuple(model.effective_evidence_ids or ()),
+            effective_skill_ids=tuple(model.effective_skill_ids or ()),
+            mistaken_judgement_ids=tuple(model.mistaken_judgement_ids or ()),
+            reference_ids=model.reference_ids or {},
             created_at=_utc(model.created_at),
         )
     if isinstance(model, LearningRecord):
@@ -263,44 +1196,304 @@ def model_to_entity(model: DeclarativeBase) -> KernelModel:
             approval_status=ApprovalStatus(model.approval_status),
             created_at=_utc(model.created_at),
         )
+    if isinstance(model, WatchlistItemRecord):
+        return WatchlistItem(
+            watchlist_item_id=model.watchlist_item_id,
+            symbol=model.symbol,
+            market=model.market,
+            note=model.note,
+            status=WatchlistStatus(model.status),
+            auto_research_enabled=model.auto_research_enabled,
+            research_horizon_days=model.research_horizon_days,
+            schedule_time=model.schedule_time,
+            schedule_timezone=model.schedule_timezone,
+            next_run_at=_utc(model.next_run_at) if model.next_run_at else None,
+            last_run_at=_utc(model.last_run_at) if model.last_run_at else None,
+            created_at=_utc(model.created_at),
+            updated_at=_utc(model.updated_at),
+            archived_at=_utc(model.archived_at) if model.archived_at else None,
+        )
+    if isinstance(model, ResearchSessionRecord):
+        return ResearchSession(
+            research_session_id=model.research_session_id,
+            scope=ResearchScope(
+                watchlist_item_id=model.watchlist_item_id,
+                symbol=model.symbol,
+                market=model.market,
+                watchlist_note_snapshot=model.watchlist_note_snapshot,
+                horizon_days=model.horizon_days,
+                as_of=_utc(model.as_of),
+                valid_until=_utc(model.valid_until),
+            ),
+            status=ResearchSessionStatus(model.status),
+            evidence_ids=tuple(link.evidence_id for link in model.evidence_links),
+            experiment_id=model.experiment_id,
+            cancelled_at=_utc(model.cancelled_at) if model.cancelled_at else None,
+            failure_stage=model.failure_stage,
+            failure_error=model.failure_error,
+            retry_count=model.retry_count,
+            transition_log=tuple(
+                ResearchTransitionEvent.model_validate(item)
+                for item in model.transition_log
+            ),
+            created_at=_utc(model.created_at),
+            updated_at=_utc(model.updated_at),
+        )
+    if isinstance(model, AgentReportRecord):
+        return AgentReport(
+            report_id=model.report_id,
+            research_session_id=model.research_session_id,
+            role=AgentRole(model.role),
+            summary=model.summary,
+            stance=model.stance,
+            confidence=model.confidence,
+            evidence_ids=tuple(link.evidence_id for link in model.evidence_links),
+            source=model.source,
+            raw_reference=model.raw_reference,
+            status=AgentReportStatus(model.status),
+            archived_at=_utc(model.archived_at) if model.archived_at else None,
+            created_at=_utc(model.created_at),
+            updated_at=_utc(model.updated_at),
+        )
+    if isinstance(model, HypothesisRecord):
+        return Hypothesis(
+            hypothesis_id=model.hypothesis_id,
+            research_session_id=model.research_session_id,
+            statement=model.statement,
+            rationale=model.rationale,
+            direction=model.direction,
+            horizon_days=model.horizon_days,
+            confidence=model.confidence,
+            supporting_report_ids=tuple(link.report_id for link in model.report_links),
+            supporting_evidence_ids=tuple(
+                link.evidence_id for link in model.evidence_links
+            ),
+            status=HypothesisStatus(model.status),
+            created_at=_utc(model.created_at),
+            updated_at=_utc(model.updated_at),
+        )
+    if isinstance(model, DebateRecordModel):
+        return DebateRecord(
+            debate_id=model.debate_id,
+            research_session_id=model.research_session_id,
+            report_ids=tuple(model.report_ids),
+            hypothesis_ids=tuple(model.hypothesis_ids),
+            status=DebateStatus(model.status),
+            final_decision_id=model.final_decision_id,
+            created_at=_utc(model.created_at),
+            updated_at=_utc(model.updated_at),
+        )
+    if isinstance(model, DebateStatementRecord):
+        return DebateStatement(
+            statement_id=model.statement_id,
+            debate_id=model.debate_id,
+            agent_report_id=model.agent_report_id,
+            hypothesis_id=model.hypothesis_id,
+            stance=DebateStance(model.stance),
+            reasoning=model.reasoning,
+            evidence_ids=tuple(model.evidence_ids),
+            confidence_before=model.confidence_before,
+            confidence_after=model.confidence_after,
+            created_at=_utc(model.created_at),
+        )
+    if isinstance(model, DecisionProposalRecord):
+        return DecisionProposal(
+            proposal_id=model.proposal_id,
+            debate_id=model.debate_id,
+            conclusion=ResearchConclusion(model.conclusion),
+            confidence=model.confidence,
+            thesis=model.thesis,
+            supporting_hypothesis_ids=tuple(model.supporting_hypothesis_ids),
+            rejected_hypothesis_ids=tuple(model.rejected_hypothesis_ids),
+            evidence_ids=tuple(model.evidence_ids),
+            risk_notes=tuple(model.risk_notes),
+            created_at=_utc(model.created_at),
+        )
+    if isinstance(model, RiskReviewRecord):
+        return RiskReview(
+            risk_review_id=model.risk_review_id,
+            proposal_id=model.proposal_id,
+            verdict=RiskVerdict(model.verdict),
+            final_conclusion=ResearchConclusion(model.final_conclusion),
+            final_confidence=model.final_confidence,
+            reasons=tuple(model.reasons),
+            confidence_delta=model.confidence_delta,
+            adjusted_position=model.adjusted_position,
+            condition_changes=tuple(model.condition_changes),
+            converted_to_no_trade=model.converted_to_no_trade,
+            research_session_id=model.research_session_id,
+            decision_result_id=model.decision_result_id,
+            discussion_result_id=model.discussion_result_id,
+            skill_result_ids=tuple(model.skill_result_ids),
+            evidence_ids=tuple(model.evidence_ids),
+            supporting_arguments=tuple(model.supporting_arguments),
+            opposing_arguments=tuple(model.opposing_arguments),
+            created_at=_utc(model.created_at),
+        )
+    if isinstance(model, DecisionAssemblyRecordModel):
+        return DecisionAssemblyRecord(
+            assembly_id=model.assembly_id,
+            research_session_id=model.research_session_id,
+            debate_id=model.debate_id,
+            proposal_id=model.proposal_id,
+            risk_review_id=model.risk_review_id,
+            decision_id=model.decision_id,
+            conclusion=ResearchConclusion(model.conclusion),
+            report_ids=tuple(model.report_ids),
+            hypothesis_ids=tuple(model.hypothesis_ids),
+            evidence_ids=tuple(model.evidence_ids),
+            created_at=_utc(model.created_at),
+        )
+    if isinstance(model, ResearchRunRecord):
+        return ResearchRun(
+            run_id=model.run_id,
+            research_session_id=model.research_session_id,
+            watchlist_item_id=model.watchlist_item_id,
+            symbol=model.symbol,
+            research_window_key=model.research_window_key,
+            current_stage=cast("ResearchRunStage", model.current_stage),
+            status=cast("ResearchRunStatus", model.status),
+            vibe_run_id=model.vibe_run_id,
+            workflow=model.workflow,
+            input_params=model.input_params,
+            raw_output_reference=model.raw_output_reference,
+            failed_stage=model.failed_stage,
+            error_type=model.error_type,
+            error=model.error,
+            finished_at=_utc(model.finished_at) if model.finished_at else None,
+            created_at=_utc(model.created_at),
+            updated_at=_utc(model.updated_at),
+        )
     msg = f"{type(model).__name__} is not supported by PostgreSQL mapper"
     raise UnsupportedEntityError(msg)
 
 
 def model_for_entity_type(entity_type: type[KernelModel]) -> type[Record]:
+    if entity_type is SkillDefinition:
+        return SkillDefinitionRecord
+    if entity_type is AnalysisTask:
+        return AnalysisTaskRecord
+    if entity_type is SkillExecution:
+        return SkillExecutionRecord
+    if entity_type is SkillResult:
+        return SkillResultRecord
+    if entity_type is DiscussionExecution:
+        return DiscussionExecutionRecord
+    if entity_type is DiscussionResult:
+        return DiscussionResultRecord
+    if entity_type is DecisionExecution:
+        return DecisionExecutionRecord
+    if entity_type is DecisionResult:
+        return DecisionResultRecord
     if entity_type is Evidence:
         return EvidenceRecord
     if entity_type is Experiment:
         return ExperimentRecord
     if entity_type is Decision:
         return DecisionRecord
+    if entity_type is TradePlan:
+        return TradePlanRecord
+    if entity_type is SimulatedExecution:
+        return SimulatedExecutionRecord
     if entity_type is DecisionOutcome:
         return DecisionOutcomeRecord
     if entity_type is DecisionEvaluation:
         return DecisionEvaluationRecord
+    if entity_type is ResearchSettlementRecord:
+        return ResearchSettlementRecordModel
+    if entity_type is SchedulerRuntime:
+        return SchedulerRuntimeRecord
+    if entity_type is SchedulerJobRun:
+        return SchedulerJobRunRecord
     if entity_type is Review:
         return ReviewRecord
     if entity_type is Learning:
         return LearningRecord
+    if entity_type is WatchlistItem:
+        return WatchlistItemRecord
+    if entity_type is ResearchSession:
+        return ResearchSessionRecord
+    if entity_type is AgentReport:
+        return AgentReportRecord
+    if entity_type is Hypothesis:
+        return HypothesisRecord
+    if entity_type is DebateRecord:
+        return DebateRecordModel
+    if entity_type is DebateStatement:
+        return DebateStatementRecord
+    if entity_type is DecisionProposal:
+        return DecisionProposalRecord
+    if entity_type is RiskReview:
+        return RiskReviewRecord
+    if entity_type is DecisionAssemblyRecord:
+        return DecisionAssemblyRecordModel
+    if entity_type is ResearchRun:
+        return ResearchRunRecord
     msg = f"{entity_type.__name__} is not supported by PostgreSQL mapper"
     raise UnsupportedEntityError(msg)
 
 
 def id_column_for_model(model_type: type[Record]) -> Any:
+    if model_type is SkillDefinitionRecord:
+        return SkillDefinitionRecord.definition_id
+    if model_type is AnalysisTaskRecord:
+        return AnalysisTaskRecord.task_id
+    if model_type is SkillExecutionRecord:
+        return SkillExecutionRecord.execution_id
+    if model_type is SkillResultRecord:
+        return SkillResultRecord.result_id
+    if model_type is DiscussionExecutionRecord:
+        return DiscussionExecutionRecord.discussion_execution_id
+    if model_type is DiscussionResultRecord:
+        return DiscussionResultRecord.discussion_result_id
+    if model_type is DecisionExecutionRecord:
+        return DecisionExecutionRecord.decision_execution_id
+    if model_type is DecisionResultRecord:
+        return DecisionResultRecord.decision_result_id
     if model_type is EvidenceRecord:
         return EvidenceRecord.evidence_id
     if model_type is ExperimentRecord:
         return ExperimentRecord.experiment_id
     if model_type is DecisionRecord:
         return DecisionRecord.decision_id
+    if model_type is TradePlanRecord:
+        return TradePlanRecord.trade_plan_id
+    if model_type is SimulatedExecutionRecord:
+        return SimulatedExecutionRecord.execution_id
     if model_type is DecisionOutcomeRecord:
         return DecisionOutcomeRecord.outcome_id
     if model_type is DecisionEvaluationRecord:
         return DecisionEvaluationRecord.evaluation_id
+    if model_type is ResearchSettlementRecordModel:
+        return ResearchSettlementRecordModel.research_settlement_id
+    if model_type is SchedulerRuntimeRecord:
+        return SchedulerRuntimeRecord.scheduler_instance_id
+    if model_type is SchedulerJobRunRecord:
+        return SchedulerJobRunRecord.job_run_id
     if model_type is ReviewRecord:
         return ReviewRecord.review_id
     if model_type is LearningRecord:
         return LearningRecord.learning_id
+    if model_type is WatchlistItemRecord:
+        return WatchlistItemRecord.watchlist_item_id
+    if model_type is ResearchSessionRecord:
+        return ResearchSessionRecord.research_session_id
+    if model_type is AgentReportRecord:
+        return AgentReportRecord.report_id
+    if model_type is HypothesisRecord:
+        return HypothesisRecord.hypothesis_id
+    if model_type is DebateRecordModel:
+        return DebateRecordModel.debate_id
+    if model_type is DebateStatementRecord:
+        return DebateStatementRecord.statement_id
+    if model_type is DecisionProposalRecord:
+        return DecisionProposalRecord.proposal_id
+    if model_type is RiskReviewRecord:
+        return RiskReviewRecord.risk_review_id
+    if model_type is DecisionAssemblyRecordModel:
+        return DecisionAssemblyRecordModel.assembly_id
+    if model_type is ResearchRunRecord:
+        return ResearchRunRecord.run_id
     msg = f"{model_type.__name__} is not supported by PostgreSQL mapper"
     raise UnsupportedEntityError(msg)
 

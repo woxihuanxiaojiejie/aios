@@ -1,5 +1,7 @@
 .coverage
 .env
+results/
+runtime/
 .env.local
 .env.*.local
 .mypy_cache/

@@ -4,7 +4,6 @@ import os
 from datetime import UTC, date, datetime
 
 import pytest
-from dotenv import load_dotenv
 
 from aios.adapters.market_data import Adjustment
 from aios.adapters.market_evidence import market_bar_to_evidence
@@ -14,8 +13,6 @@ from aios.integrations.litellm.adapter import LiteLLMAdapter
 from aios.kernel.experiment import Experiment
 from aios.storage.memory import InMemoryStorage
 from aios.workflows.decision_lifecycle import DecisionLifecycleService
-
-load_dotenv(override=True)
 
 
 @pytest.mark.external_llm

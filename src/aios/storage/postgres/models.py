@@ -1,21 +1,25 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, time
 from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
     Index,
+    Integer,
     Numeric,
     String,
+    Time,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
@@ -31,6 +35,17 @@ class EvidenceRecord(Base):
         CheckConstraint("available_at >= published_at", "ck_evidence_available_at"),
         Index("ix_evidence_content_hash", "content_hash"),
         Index("ix_evidence_published_at", "published_at"),
+        Index("ix_evidence_source_type", "source_type"),
+        Index("ix_evidence_source_identifier", "source_identifier"),
+        Index("ix_evidence_collected_at", "collected_at"),
+        Index("ix_evidence_fingerprint", "fingerprint"),
+        Index("ix_evidence_processing_status", "processing_status"),
+        Index(
+            "uq_evidence_legacy_brain_evidence_id",
+            "legacy_brain_evidence_id",
+            unique=True,
+            postgresql_where=text("legacy_brain_evidence_id is not null"),
+        ),
     )
 
     evidence_id: Mapped[str] = mapped_column(String(64), primary_key=True)
@@ -51,6 +66,331 @@ class EvidenceRecord(Base):
         JSONB,
         nullable=False,
     )
+    title: Mapped[str | None] = mapped_column(String)
+    raw_content: Mapped[str | None] = mapped_column(String)
+    raw_response: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    source_type: Mapped[str | None] = mapped_column(String(64))
+    source_identifier: Mapped[str | None] = mapped_column(String(1024))
+    source_url: Mapped[str | None] = mapped_column(String(2048))
+    collected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    entities: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    fingerprint: Mapped[str | None] = mapped_column(String(64))
+    credibility: Mapped[float | None] = mapped_column(Float)
+    freshness: Mapped[str | None] = mapped_column(String(64))
+    processing_status: Mapped[str] = mapped_column(String(64), nullable=False)
+    parse_error: Mapped[str | None] = mapped_column(String)
+    legacy_brain_evidence_id: Mapped[str | None] = mapped_column(String(36))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class BrainEvidenceRecord(Base):
+    __tablename__ = "brain_evidence"
+    __table_args__ = (
+        CheckConstraint(
+            "available_at >= collected_at", "ck_brain_evidence_available_at"
+        ),
+        Index("ix_brain_evidence_fingerprint", "fingerprint"),
+        Index("ix_brain_evidence_source", "source"),
+        Index("ix_brain_evidence_source_type", "source_type"),
+        Index("ix_brain_evidence_published_at", "published_at"),
+        Index("ix_brain_evidence_collected_at", "collected_at"),
+        Index("ix_brain_evidence_available_at", "available_at"),
+    )
+
+    evidence_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    source: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_identifier: Mapped[str | None] = mapped_column(String(1024))
+    source_url: Mapped[str | None] = mapped_column(String(2048))
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    summary: Mapped[str | None] = mapped_column(String)
+    content: Mapped[str] = mapped_column(String, nullable=False)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    collected_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    raw_artifact_path: Mapped[str] = mapped_column(String(2048), nullable=False)
+    provider_record_json: Mapped[dict[str, Any]] = mapped_column(
+        "provider_record", JSONB, nullable=False
+    )
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSONB, nullable=False
+    )
+
+
+class SkillDefinitionRecord(Base):
+    __tablename__ = "skill_definitions"
+    __table_args__ = (
+        UniqueConstraint("skill_id", "version", name="uq_skill_definitions_version"),
+        Index("ix_skill_definitions_skill_id", "skill_id"),
+        Index("ix_skill_definitions_status", "status"),
+        Index("ix_skill_definitions_created_at", "created_at"),
+    )
+
+    definition_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    skill_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    version: Mapped[str] = mapped_column(String(64), nullable=False)
+    description: Mapped[str] = mapped_column(String, nullable=False)
+    supported_markets: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    supported_asset_types: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    supported_horizons: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    required_evidence_types: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    input_schema: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    output_schema: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    trigger_conditions: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    dependencies: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    conflicts: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class AnalysisTaskRecord(Base):
+    __tablename__ = "analysis_tasks"
+    __table_args__ = (
+        Index("ix_analysis_tasks_symbol", "symbol"),
+        Index("ix_analysis_tasks_market", "market"),
+        Index("ix_analysis_tasks_as_of", "as_of"),
+        Index("ix_analysis_tasks_created_at", "created_at"),
+    )
+
+    task_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    symbol: Mapped[str] = mapped_column(String(64), nullable=False)
+    market: Mapped[str] = mapped_column(String(64), nullable=False)
+    asset_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    horizon: Mapped[str] = mapped_column(String(64), nullable=False)
+    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    evidence_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    user_constraints: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    requested_skill_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class SkillExecutionRecord(Base):
+    __tablename__ = "skill_executions"
+    __table_args__ = (
+        CheckConstraint(
+            "finished_at is null or finished_at >= started_at",
+            "ck_skill_executions_finished_at",
+        ),
+        CheckConstraint("latency_ms is null or latency_ms >= 0"),
+        CheckConstraint("retry_count >= 0"),
+        Index("ix_skill_executions_task_id", "task_id"),
+        Index("ix_skill_executions_skill_id", "skill_id"),
+        Index("ix_skill_executions_status", "status"),
+        Index("ix_skill_executions_started_at", "started_at"),
+    )
+
+    execution_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    task_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    skill_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    skill_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(64))
+    model: Mapped[str | None] = mapped_column(String(255))
+    prompt_version: Mapped[str | None] = mapped_column(String(128))
+    token_usage: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    error: Mapped[str | None] = mapped_column(String)
+
+
+class SkillResultRecord(Base):
+    __tablename__ = "skill_results"
+    __table_args__ = (
+        CheckConstraint(
+            "confidence >= 0 and confidence <= 1", "ck_skill_results_confidence"
+        ),
+        Index("ix_skill_results_execution_id", "execution_id"),
+        Index("ix_skill_results_skill_id", "skill_id"),
+        Index("ix_skill_results_direction", "direction"),
+        Index("ix_skill_results_created_at", "created_at"),
+    )
+
+    result_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    execution_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    skill_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    skill_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    conclusion: Mapped[str] = mapped_column(String, nullable=False)
+    direction: Mapped[str] = mapped_column(String(32), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    supporting_evidence_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    contradicting_evidence_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    assumptions: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    risk_factors: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    invalid_conditions: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    missing_information: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    reasoning_summary: Mapped[str] = mapped_column(String, nullable=False)
+    raw_output: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class DiscussionExecutionRecord(Base):
+    __tablename__ = "discussion_executions"
+    __table_args__ = (
+        CheckConstraint(
+            "finished_at is null or finished_at >= started_at",
+            "ck_discussion_executions_finished_at",
+        ),
+        CheckConstraint("latency_ms is null or latency_ms >= 0"),
+        CheckConstraint("retry_count >= 0"),
+        Index("ix_discussion_executions_task_id", "task_id"),
+        Index("ix_discussion_executions_status", "status"),
+        Index("ix_discussion_executions_started_at", "started_at"),
+        Index("ix_discussion_executions_created_at", "created_at"),
+    )
+
+    discussion_execution_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    task_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    skill_result_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(64))
+    model: Mapped[str | None] = mapped_column(String(255))
+    prompt_version: Mapped[str | None] = mapped_column(String(128))
+    token_usage: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    raw_response: Mapped[str | None] = mapped_column(String)
+    parsed_response: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    error: Mapped[str | None] = mapped_column(String)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class DiscussionResultRecord(Base):
+    __tablename__ = "discussion_results"
+    __table_args__ = (
+        CheckConstraint(
+            "discussion_confidence >= 0 and discussion_confidence <= 1",
+            "ck_discussion_results_confidence",
+        ),
+        Index("ix_discussion_results_execution_id", "discussion_execution_id"),
+        Index("ix_discussion_results_task_id", "task_id"),
+        Index("ix_discussion_results_created_at", "created_at"),
+    )
+
+    discussion_result_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    discussion_execution_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    task_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    skill_result_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    conflicts: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    evidence_reviews: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB,
+        nullable=False,
+    )
+    counter_arguments: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB,
+        nullable=False,
+    )
+    revision_suggestions: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB,
+        nullable=False,
+    )
+    discussion_summary: Mapped[str] = mapped_column(String, nullable=False)
+    discussion_confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class DecisionExecutionRecord(Base):
+    __tablename__ = "decision_executions"
+    __table_args__ = (
+        CheckConstraint(
+            "finished_at is null or finished_at >= started_at",
+            "ck_decision_executions_finished_at",
+        ),
+        CheckConstraint("latency_ms is null or latency_ms >= 0"),
+        CheckConstraint("retry_count >= 0"),
+        Index("ix_decision_executions_task_id", "task_id"),
+        Index("ix_decision_executions_discussion_result_id", "discussion_result_id"),
+        Index("ix_decision_executions_status", "status"),
+        Index("ix_decision_executions_started_at", "started_at"),
+        Index("ix_decision_executions_created_at", "created_at"),
+    )
+
+    decision_execution_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    task_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    discussion_result_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    skill_result_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    evidence_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(64))
+    model: Mapped[str | None] = mapped_column(String(255))
+    prompt_version: Mapped[str | None] = mapped_column(String(128))
+    token_usage: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    raw_response: Mapped[str | None] = mapped_column(String)
+    parsed_response: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    error: Mapped[str | None] = mapped_column(String)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class DecisionResultRecord(Base):
+    __tablename__ = "decision_results"
+    __table_args__ = (
+        CheckConstraint(
+            "confidence >= 0 and confidence <= 1",
+            "ck_decision_results_confidence",
+        ),
+        Index("ix_decision_results_execution_id", "decision_execution_id"),
+        Index("ix_decision_results_task_id", "task_id"),
+        Index("ix_decision_results_discussion_result_id", "discussion_result_id"),
+        Index("ix_decision_results_direction", "direction"),
+        Index("ix_decision_results_action", "action"),
+        Index("ix_decision_results_created_at", "created_at"),
+    )
+
+    decision_result_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    decision_execution_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    task_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    discussion_result_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    skill_result_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    direction: Mapped[str] = mapped_column(String(32), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    action: Mapped[str] = mapped_column(String(32), nullable=False)
+    reasoning: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    supporting_skills: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    opposing_skills: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    discussion_refs: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    evidence_refs: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    risks: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    rejected_directions: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB,
+        nullable=False,
+    )
+    decision_summary: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
@@ -93,6 +433,10 @@ class DecisionRecord(Base):
             "confidence >= 0 and confidence <= 1", "ck_decisions_confidence"
         ),
         CheckConstraint("valid_until > created_at", "ck_decisions_valid_until"),
+        UniqueConstraint(
+            "decision_result_id",
+            name="uq_decisions_decision_result_id",
+        ),
         Index("ix_decisions_experiment_id", "experiment_id"),
         Index("ix_decisions_symbol", "symbol"),
         Index("ix_decisions_action", "action"),
@@ -108,8 +452,8 @@ class DecisionRecord(Base):
     action: Mapped[str] = mapped_column(String(32), nullable=False)
     horizon: Mapped[str] = mapped_column(String(64), nullable=False)
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
-    expected_return: Mapped[float] = mapped_column(Float, nullable=False)
-    max_expected_loss: Mapped[float] = mapped_column(Float, nullable=False)
+    expected_return: Mapped[float | None] = mapped_column(Float)
+    max_expected_loss: Mapped[float | None] = mapped_column(Float)
     evidence_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
     reasoning_summary: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -117,6 +461,127 @@ class DecisionRecord(Base):
         DateTime(timezone=True), nullable=False
     )
     valid_until: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    research_session_id: Mapped[str | None] = mapped_column(String(64))
+    decision_result_id: Mapped[str | None] = mapped_column(String(64))
+    risk_review_id: Mapped[str | None] = mapped_column(String(64))
+    direction: Mapped[str | None] = mapped_column(String(32))
+    original_direction: Mapped[str | None] = mapped_column(String(32))
+    target_range: Mapped[list[float] | None] = mapped_column(JSONB)
+    entry_conditions: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    invalidation_conditions: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    stop_loss: Mapped[float | None] = mapped_column(Float)
+    position_suggestion: Mapped[float | None] = mapped_column(Float)
+    risk_factors: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    supporting_skill_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    dissenting_opinions: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    market_regime: Mapped[str | None] = mapped_column(String(128))
+    generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    planned_settlement_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    unavailable_fields: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    downgrade_reasons: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+
+
+class TradePlanRecord(Base):
+    __tablename__ = "trade_plans"
+    __table_args__ = (
+        UniqueConstraint("decision_id", name="uq_trade_plans_decision_id"),
+        CheckConstraint(
+            "status in ('ready', 'no_trade', 'invalid', 'expired', 'cancelled')",
+            "ck_trade_plans_status",
+        ),
+        CheckConstraint("updated_at >= created_at", "ck_trade_plans_updated_at"),
+        Index("ix_trade_plans_decision_id", "decision_id"),
+        Index("ix_trade_plans_research_session_id", "research_session_id"),
+        Index("ix_trade_plans_symbol", "symbol"),
+        Index("ix_trade_plans_status", "status"),
+    )
+
+    trade_plan_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    decision_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("decisions.decision_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    research_session_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    symbol: Mapped[str] = mapped_column(String(64), nullable=False)
+    direction: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    planned_entry: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    entry_conditions: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    target: Mapped[list[float] | None] = mapped_column(JSONB)
+    stop_loss: Mapped[float | None] = mapped_column(Float)
+    invalidation_conditions: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    planned_position: Mapped[float | None] = mapped_column(Float)
+    horizon: Mapped[str] = mapped_column(String(64), nullable=False)
+    expiry: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    fee_model: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    slippage_model: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    unavailable_fields: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    no_trade_reasons: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class SimulatedExecutionRecord(Base):
+    __tablename__ = "simulated_executions"
+    __table_args__ = (
+        UniqueConstraint("trade_plan_id", name="uq_simulated_executions_trade_plan_id"),
+        CheckConstraint(
+            "execution_status in ('waiting_settlement', 'not_filled')",
+            "ck_simulated_executions_status",
+        ),
+        CheckConstraint(
+            "exit_reason in ('target', 'stop', 'expiry', 'not_filled')",
+            "ck_simulated_executions_exit_reason",
+        ),
+        CheckConstraint("position_size >= 0 and position_size <= 1"),
+        CheckConstraint("fee >= 0"),
+        CheckConstraint("slippage >= 0"),
+        CheckConstraint(
+            "updated_at >= created_at",
+            "ck_simulated_executions_updated_at",
+        ),
+        Index("ix_simulated_executions_trade_plan_id", "trade_plan_id"),
+        Index("ix_simulated_executions_decision_id", "decision_id"),
+        Index("ix_simulated_executions_research_session_id", "research_session_id"),
+        Index("ix_simulated_executions_symbol", "symbol"),
+        Index("ix_simulated_executions_status", "execution_status"),
+    )
+
+    execution_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    trade_plan_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("trade_plans.trade_plan_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    decision_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    research_session_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    symbol: Mapped[str] = mapped_column(String(64), nullable=False)
+    direction: Mapped[str] = mapped_column(String(32), nullable=False)
+    execution_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    execution_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    market_bar_id: Mapped[str | None] = mapped_column(String(255))
+    market_data_source: Mapped[str | None] = mapped_column(String(255))
+    planned_entry: Mapped[str] = mapped_column(String(255), nullable=False)
+    executed_entry: Mapped[Decimal | None] = mapped_column(Numeric(24, 12))
+    executed_exit: Mapped[Decimal | None] = mapped_column(Numeric(24, 12))
+    position_size: Mapped[Decimal] = mapped_column(Numeric(24, 12), nullable=False)
+    fee: Mapped[Decimal] = mapped_column(Numeric(24, 12), nullable=False)
+    slippage: Mapped[Decimal] = mapped_column(Numeric(24, 12), nullable=False)
+    realized_return: Mapped[Decimal | None] = mapped_column(Numeric(24, 12))
+    exit_reason: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
 
@@ -198,6 +663,14 @@ class DecisionOutcomeRecord(Base):
         DateTime(timezone=True), nullable=False
     )
     status: Mapped[str] = mapped_column(String(64), nullable=False)
+    execution_id: Mapped[str | None] = mapped_column(String(64))
+    trade_plan_id: Mapped[str | None] = mapped_column(String(64))
+    research_session_id: Mapped[str | None] = mapped_column(String(64))
+    pnl: Mapped[Decimal | None] = mapped_column(Numeric(24, 12))
+    return_rate: Mapped[Decimal | None] = mapped_column(Numeric(24, 12))
+    holding_days: Mapped[int | None] = mapped_column(Integer)
+    exit_reason: Mapped[str | None] = mapped_column(String(32))
+    max_drawdown: Mapped[Decimal | None] = mapped_column(Numeric(24, 12))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
@@ -240,6 +713,120 @@ class DecisionEvaluationRecord(Base):
         DateTime(timezone=True), nullable=False
     )
     explanation: Mapped[str] = mapped_column(String, nullable=False)
+    prediction_accuracy: Mapped[str | None] = mapped_column(String(32))
+    timing_accuracy: Mapped[str | None] = mapped_column(String(32))
+    risk_control: Mapped[str | None] = mapped_column(String(32))
+    execution_quality: Mapped[str | None] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class ResearchSettlementRecordModel(Base):
+    __tablename__ = "research_settlement_records"
+    __table_args__ = (
+        UniqueConstraint("assembly_id", name="uq_research_settlements_assembly_id"),
+        Index("ix_research_settlements_research_session_id", "research_session_id"),
+        Index("ix_research_settlements_decision_id", "decision_id"),
+    )
+
+    research_settlement_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    assembly_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("decision_assembly_records.assembly_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    research_session_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("research_sessions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    debate_id: Mapped[str | None] = mapped_column(
+        String(64),
+        ForeignKey("debate_records.debate_id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    proposal_id: Mapped[str | None] = mapped_column(
+        String(64),
+        ForeignKey("decision_proposals.proposal_id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    risk_review_id: Mapped[str | None] = mapped_column(
+        String(64),
+        ForeignKey("risk_reviews.risk_review_id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    decision_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("decisions.decision_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    outcome_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("decision_outcomes.outcome_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    evaluation_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("decision_evaluations.evaluation_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    review_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("reviews.review_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    learning_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    evidence_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    report_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    hypothesis_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    settled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class SchedulerRuntimeRecord(Base):
+    __tablename__ = "scheduler_runtimes"
+    __table_args__ = (
+        Index("ix_scheduler_runtimes_last_heartbeat", "last_heartbeat_at"),
+    )
+
+    scheduler_instance_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    last_heartbeat_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class SchedulerJobRunRecord(Base):
+    __tablename__ = "scheduler_job_runs"
+    __table_args__ = (
+        Index("ix_scheduler_job_runs_job_completed", "job_id", "completed_at"),
+    )
+
+    job_run_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    job_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    completed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    processed_count: Mapped[int | None] = mapped_column(Integer)
+    success_count: Mapped[int | None] = mapped_column(Integer)
+    failure_count: Mapped[int | None] = mapped_column(Integer)
+    result_message: Mapped[str | None] = mapped_column(String(500))
+    error_type: Mapped[str | None] = mapped_column(String(128))
+    error_message: Mapped[str | None] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
@@ -264,6 +851,12 @@ class ReviewRecord(Base):
     outcome: Mapped[str] = mapped_column(String(64), nullable=False)
     cause_tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
     review_summary: Mapped[str] = mapped_column(String, nullable=False)
+    success_reasons: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    failure_reasons: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    effective_evidence_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    effective_skill_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    mistaken_judgement_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    reference_ids: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
@@ -289,5 +882,597 @@ class LearningRecord(Base):
     reason: Mapped[str] = mapped_column(String, nullable=False)
     approval_status: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class WatchlistItemRecord(Base):
+    __tablename__ = "watchlist_items"
+    __table_args__ = (
+        CheckConstraint("status in ('active', 'archived')", "ck_watchlist_status"),
+        CheckConstraint(
+            "(status = 'active' and archived_at is null) or "
+            "(status = 'archived' and archived_at is not null)",
+            "ck_watchlist_archived_at",
+        ),
+        CheckConstraint(
+            "updated_at >= created_at",
+            "ck_watchlist_updated_at",
+        ),
+        CheckConstraint(
+            "research_horizon_days in (1, 3, 7)",
+            "ck_watchlist_research_horizon_days",
+        ),
+        Index("ix_watchlist_items_status", "status"),
+        Index("ix_watchlist_items_market_symbol", "market", "symbol"),
+        Index("ix_watchlist_items_next_run", "auto_research_enabled", "next_run_at"),
+        Index(
+            "uq_watchlist_active_symbol_market",
+            "market",
+            "symbol",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+        ),
+    )
+
+    watchlist_item_id: Mapped[str] = mapped_column("id", String(64), primary_key=True)
+    symbol: Mapped[str] = mapped_column(String(64), nullable=False)
+    market: Mapped[str] = mapped_column(String(64), nullable=False)
+    note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    auto_research_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    research_horizon_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    schedule_time: Mapped[time] = mapped_column(Time, nullable=False)
+    schedule_timezone: Mapped[str] = mapped_column(String(64), nullable=False)
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ResearchSessionRecord(Base):
+    __tablename__ = "research_sessions"
+    __table_args__ = (
+        CheckConstraint(
+            "horizon_days in (1, 3, 7)",
+            "ck_research_sessions_horizon",
+        ),
+        CheckConstraint(
+            "status in ("
+            "'created', 'collecting_evidence', 'evidence_ready', "
+            "'hypothesis_ready', 'skills_running', 'discussion_ready', "
+            "'risk_review', 'decision_ready', 'trade_plan_ready', "
+            "'waiting_execution', 'waiting_settlement', 'settled', "
+            "'reviewed', 'learning_proposed', 'completed', 'failed', 'cancelled'"
+            ")",
+            "ck_research_sessions_status",
+        ),
+        CheckConstraint(
+            "valid_until > as_of",
+            "ck_research_sessions_valid_until",
+        ),
+        CheckConstraint(
+            "(status = 'cancelled' and cancelled_at is not null) or "
+            "(status <> 'cancelled' and cancelled_at is null)",
+            "ck_research_sessions_cancelled_at",
+        ),
+        CheckConstraint(
+            "updated_at >= created_at",
+            "ck_research_sessions_updated_at",
+        ),
+        Index("ix_research_sessions_watchlist_item_id", "watchlist_item_id"),
+        Index("ix_research_sessions_symbol", "symbol"),
+        Index("ix_research_sessions_market", "market"),
+        Index("ix_research_sessions_status", "status"),
+        Index(
+            "uq_research_sessions_active_scope",
+            "watchlist_item_id",
+            "as_of",
+            "horizon_days",
+            unique=True,
+            postgresql_where=text("status <> 'cancelled'"),
+        ),
+    )
+
+    research_session_id: Mapped[str] = mapped_column("id", String(64), primary_key=True)
+    watchlist_item_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("watchlist_items.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    symbol: Mapped[str] = mapped_column(String(64), nullable=False)
+    market: Mapped[str] = mapped_column(String(64), nullable=False)
+    watchlist_note_snapshot: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+    )
+    horizon_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    valid_until: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    experiment_id: Mapped[str | None] = mapped_column(
+        String(64),
+        ForeignKey("experiments.experiment_id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failure_stage: Mapped[str | None] = mapped_column(String(128))
+    failure_error: Mapped[str | None] = mapped_column(String)
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    transition_log: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    evidence_links: Mapped[list[ResearchSessionEvidenceRecord]] = relationship(
+        back_populates="session",
+        cascade="all, delete-orphan",
+        order_by="ResearchSessionEvidenceRecord.position",
+    )
+
+
+class ResearchSessionEvidenceRecord(Base):
+    __tablename__ = "research_session_evidence"
+    __table_args__ = (
+        UniqueConstraint(
+            "research_session_id",
+            "position",
+            name="uq_research_session_evidence_position",
+        ),
+    )
+
+    research_session_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("research_sessions.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    evidence_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("evidence.evidence_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    session: Mapped[ResearchSessionRecord] = relationship(
+        back_populates="evidence_links"
+    )
+
+
+class AgentReportRecord(Base):
+    __tablename__ = "agent_reports"
+    __table_args__ = (
+        CheckConstraint(
+            "role in ('technical', 'fundamental', 'news', 'sentiment', 'capital_flow')",
+            "ck_agent_reports_role",
+        ),
+        CheckConstraint("status in ('active', 'archived')", "ck_agent_reports_status"),
+        CheckConstraint(
+            "confidence >= 0 and confidence <= 1",
+            "ck_agent_reports_confidence",
+        ),
+        CheckConstraint(
+            "(status = 'active' and archived_at is null) or "
+            "(status = 'archived' and archived_at is not null)",
+            "ck_agent_reports_archived_at",
+        ),
+        CheckConstraint("updated_at >= created_at", "ck_agent_reports_updated_at"),
+        Index("ix_agent_reports_research_session_id", "research_session_id"),
+        Index("ix_agent_reports_role", "role"),
+        Index("ix_agent_reports_status", "status"),
+        Index(
+            "uq_agent_reports_active_session_role",
+            "research_session_id",
+            "role",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+        ),
+    )
+
+    report_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    research_session_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("research_sessions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    role: Mapped[str] = mapped_column(String(64), nullable=False)
+    summary: Mapped[str] = mapped_column(String, nullable=False)
+    stance: Mapped[str] = mapped_column(String(255), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    source: Mapped[str] = mapped_column(String(64), nullable=False)
+    raw_reference: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    evidence_links: Mapped[list[AgentReportEvidenceRecord]] = relationship(
+        back_populates="report",
+        cascade="all, delete-orphan",
+        order_by="AgentReportEvidenceRecord.position",
+    )
+
+
+class AgentReportEvidenceRecord(Base):
+    __tablename__ = "agent_report_evidence"
+    __table_args__ = (
+        UniqueConstraint(
+            "report_id",
+            "position",
+            name="uq_agent_report_evidence_position",
+        ),
+    )
+
+    report_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("agent_reports.report_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    evidence_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("evidence.evidence_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    report: Mapped[AgentReportRecord] = relationship(back_populates="evidence_links")
+
+
+class HypothesisRecord(Base):
+    __tablename__ = "hypotheses"
+    __table_args__ = (
+        CheckConstraint(
+            "status in ('proposed', 'validated', 'rejected', 'invalidated')",
+            "ck_hypotheses_status",
+        ),
+        CheckConstraint(
+            "confidence >= 0 and confidence <= 1",
+            "ck_hypotheses_confidence",
+        ),
+        CheckConstraint("horizon_days in (1, 3, 7)", "ck_hypotheses_horizon"),
+        CheckConstraint("updated_at >= created_at", "ck_hypotheses_updated_at"),
+        Index("ix_hypotheses_research_session_id", "research_session_id"),
+        Index("ix_hypotheses_status", "status"),
+    )
+
+    hypothesis_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    research_session_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("research_sessions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    statement: Mapped[str] = mapped_column(String, nullable=False)
+    rationale: Mapped[str] = mapped_column(String, nullable=False)
+    direction: Mapped[str] = mapped_column(String(64), nullable=False)
+    horizon_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    report_links: Mapped[list[HypothesisReportRecord]] = relationship(
+        back_populates="hypothesis",
+        cascade="all, delete-orphan",
+        order_by="HypothesisReportRecord.position",
+    )
+    evidence_links: Mapped[list[HypothesisEvidenceRecord]] = relationship(
+        back_populates="hypothesis",
+        cascade="all, delete-orphan",
+        order_by="HypothesisEvidenceRecord.position",
+    )
+
+
+class HypothesisReportRecord(Base):
+    __tablename__ = "hypothesis_reports"
+    __table_args__ = (
+        UniqueConstraint(
+            "hypothesis_id",
+            "position",
+            name="uq_hypothesis_reports_position",
+        ),
+    )
+
+    hypothesis_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("hypotheses.hypothesis_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    report_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("agent_reports.report_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    hypothesis: Mapped[HypothesisRecord] = relationship(back_populates="report_links")
+
+
+class HypothesisEvidenceRecord(Base):
+    __tablename__ = "hypothesis_evidence"
+    __table_args__ = (
+        UniqueConstraint(
+            "hypothesis_id",
+            "position",
+            name="uq_hypothesis_evidence_position",
+        ),
+    )
+
+    hypothesis_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("hypotheses.hypothesis_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    evidence_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("evidence.evidence_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    hypothesis: Mapped[HypothesisRecord] = relationship(back_populates="evidence_links")
+
+
+class DebateRecordModel(Base):
+    __tablename__ = "debate_records"
+    __table_args__ = (
+        CheckConstraint(
+            "status in ('open', 'assembled', 'cancelled')",
+            "ck_debate_records_status",
+        ),
+        CheckConstraint("updated_at >= created_at", "ck_debate_records_updated_at"),
+        Index("ix_debate_records_research_session_id", "research_session_id"),
+    )
+
+    debate_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    research_session_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("research_sessions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    report_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    hypothesis_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    final_decision_id: Mapped[str | None] = mapped_column(
+        String(64),
+        ForeignKey("decisions.decision_id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class DebateStatementRecord(Base):
+    __tablename__ = "debate_statements"
+    __table_args__ = (
+        CheckConstraint(
+            "stance in ('support', 'oppose', 'neutral')",
+            "ck_debate_statements_stance",
+        ),
+        CheckConstraint(
+            "confidence_before >= 0 and confidence_before <= 1",
+            "ck_debate_statements_confidence_before",
+        ),
+        CheckConstraint(
+            "confidence_after >= 0 and confidence_after <= 1",
+            "ck_debate_statements_confidence_after",
+        ),
+        UniqueConstraint(
+            "debate_id",
+            "agent_report_id",
+            "hypothesis_id",
+            name="uq_debate_statement_pair",
+        ),
+        Index("ix_debate_statements_debate_id", "debate_id"),
+    )
+
+    statement_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    debate_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("debate_records.debate_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    agent_report_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("agent_reports.report_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    hypothesis_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("hypotheses.hypothesis_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    stance: Mapped[str] = mapped_column(String(32), nullable=False)
+    reasoning: Mapped[str] = mapped_column(String, nullable=False)
+    evidence_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    confidence_before: Mapped[float] = mapped_column(Float, nullable=False)
+    confidence_after: Mapped[float] = mapped_column(Float, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class DecisionProposalRecord(Base):
+    __tablename__ = "decision_proposals"
+    __table_args__ = (
+        CheckConstraint(
+            "conclusion in ('buy', 'sell', 'hold', 'watch', 'no_trade', 'invalid')",
+            "ck_decision_proposals_conclusion",
+        ),
+        CheckConstraint(
+            "confidence >= 0 and confidence <= 1",
+            "ck_decision_proposals_confidence",
+        ),
+        UniqueConstraint("debate_id", name="uq_decision_proposals_debate_id"),
+        Index("ix_decision_proposals_debate_id", "debate_id"),
+    )
+
+    proposal_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    debate_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("debate_records.debate_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    conclusion: Mapped[str] = mapped_column(String(32), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    thesis: Mapped[str] = mapped_column(String, nullable=False)
+    supporting_hypothesis_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    rejected_hypothesis_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    evidence_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    risk_notes: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class RiskReviewRecord(Base):
+    __tablename__ = "risk_reviews"
+    __table_args__ = (
+        CheckConstraint(
+            "verdict in ('approve', 'reduce_confidence', 'reduce_position', "
+            "'modify_conditions', 'downgrade', 'veto')",
+            "ck_risk_reviews_verdict",
+        ),
+        CheckConstraint(
+            "final_conclusion in "
+            "('buy', 'sell', 'hold', 'watch', 'no_trade', 'invalid')",
+            "ck_risk_reviews_final_conclusion",
+        ),
+        CheckConstraint(
+            "final_confidence >= 0 and final_confidence <= 1",
+            "ck_risk_reviews_final_confidence",
+        ),
+        UniqueConstraint("proposal_id", name="uq_risk_reviews_proposal_id"),
+        UniqueConstraint(
+            "decision_result_id",
+            name="uq_risk_reviews_decision_result_id",
+        ),
+    )
+
+    risk_review_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    proposal_id: Mapped[str | None] = mapped_column(
+        String(64),
+        ForeignKey("decision_proposals.proposal_id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    verdict: Mapped[str] = mapped_column(String(32), nullable=False)
+    final_conclusion: Mapped[str] = mapped_column(String(32), nullable=False)
+    final_confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    reasons: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    confidence_delta: Mapped[float | None] = mapped_column(Float)
+    adjusted_position: Mapped[float | None] = mapped_column(Float)
+    condition_changes: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    converted_to_no_trade: Mapped[bool] = mapped_column(nullable=False)
+    research_session_id: Mapped[str | None] = mapped_column(String(64))
+    decision_result_id: Mapped[str | None] = mapped_column(String(64))
+    discussion_result_id: Mapped[str | None] = mapped_column(String(64))
+    skill_result_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    evidence_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    supporting_arguments: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    opposing_arguments: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class DecisionAssemblyRecordModel(Base):
+    __tablename__ = "decision_assembly_records"
+    __table_args__ = (
+        CheckConstraint(
+            "conclusion in ('buy', 'sell', 'hold', 'watch', 'no_trade', 'invalid')",
+            "ck_decision_assembly_conclusion",
+        ),
+        UniqueConstraint("proposal_id", name="uq_decision_assembly_proposal_id"),
+        UniqueConstraint("debate_id", name="uq_decision_assembly_debate_id"),
+        UniqueConstraint("decision_id", name="uq_decision_assembly_decision_id"),
+    )
+
+    assembly_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    research_session_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    debate_id: Mapped[str | None] = mapped_column(
+        String(64),
+        ForeignKey("debate_records.debate_id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    proposal_id: Mapped[str | None] = mapped_column(
+        String(64),
+        ForeignKey("decision_proposals.proposal_id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    risk_review_id: Mapped[str | None] = mapped_column(
+        String(64),
+        ForeignKey("risk_reviews.risk_review_id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    decision_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("decisions.decision_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    conclusion: Mapped[str] = mapped_column(String(32), nullable=False)
+    report_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    hypothesis_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    evidence_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class ResearchRunRecord(Base):
+    __tablename__ = "research_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status in ('running', 'completed', 'failed')",
+            "ck_research_runs_status",
+        ),
+        Index("ix_research_runs_watchlist_item_id", "watchlist_item_id"),
+        Index("ix_research_runs_research_session_id", "research_session_id"),
+        UniqueConstraint(
+            "watchlist_item_id",
+            "workflow",
+            "input_params",
+            name="uq_research_runs_idempotency",
+        ),
+    )
+
+    run_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    research_session_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    symbol: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    research_window_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    watchlist_item_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("watchlist_items.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    current_stage: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    vibe_run_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    workflow: Mapped[str] = mapped_column(String(128), nullable=False)
+    input_params: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    raw_output_reference: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    failed_stage: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    error: Mapped[str | None] = mapped_column(String, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )

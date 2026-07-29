@@ -7,13 +7,19 @@ decision lifecycle kernel:
 Evidence -> Experiment -> Decision -> Review -> Learning
 ```
 
-This repository is intentionally narrow. It does not include schedulers, trading
-adapters, agent frameworks, RAG frameworks, backtesting engines, broker
-integrations, or Learning automation. PostgreSQL support is implemented only as
-a storage adapter behind the kernel storage protocol, and the HTTP API is a thin
-lifecycle boundary over the existing service. AKShare and BaoStock support are
+This repository is intentionally narrow. It does not include broker
+integrations, real order placement, RAG frameworks, backtesting engines, or
+Learning automation. PostgreSQL is the durable business store. APScheduler is
+used only by the standalone scheduler process to wake two fixed scan services;
+per-symbol research state remains in Watchlist, ResearchRun, SimulatedExecution,
+Settlement, and idempotent business records. AKShare and BaoStock support are
 independent market-data providers that use the same `MarketDataAdapter` protocol
 to import A-share daily bars as `Evidence`.
+
+AIOS 不是专业行情终端。同花顺用于行情、K 线、分时图、板块、资金流、
+市场热度、新闻和公告查看。AIOS 用于证据、初始假设、五项独立分析、冲突识别、
+证据复核、反方审查、讨论修订、最终决策、交易计划、模拟执行、结果结算、
+评价复盘、学习建议和人工审核。AIOS 不提供专业行情图表。
 
 The HTTP API is currently intended only for local development and trusted
 networks. Do not expose it directly to the public internet.
@@ -113,6 +119,8 @@ Available routes:
 ```text
 GET  /health
 GET  /api/v1/health
+GET  /api/v1/dashboard/summary
+GET  /api/v1/system/status
 POST /api/v1/evidence
 GET  /api/v1/evidence
 GET  /api/v1/evidence/{evidence_id}
@@ -136,6 +144,20 @@ POST /api/v1/market-data/akshare/daily-bars/import
 POST /api/v1/market-data/baostock/daily-bars/preview
 POST /api/v1/market-data/baostock/daily-bars/import
 POST /api/v1/decision-generation/generate
+POST /api/v1/research/watchlist
+GET  /api/v1/research/watchlist
+GET  /api/v1/research/watchlist/{item_id}
+PATCH /api/v1/research/watchlist/{item_id}
+POST /api/v1/research/watchlist/{item_id}/archive
+POST /api/v1/research/watchlist/{item_id}/restore
+POST /api/v1/research/watchlist/{item_id}/run
+GET  /api/v1/research/runs
+POST /api/v1/research/runs
+GET  /api/v1/research/runs/{run_id}
+GET  /api/v1/research/runs/{run_id}/detail
+POST /api/v1/research/runs/{run_id}/resume
+POST /api/v1/research/scheduler/run-once
+POST /api/v1/research/settlement/run-once
 GET  /api/v1/research/market
 POST /api/v1/research/evidence
 POST /api/v1/research/experiments
@@ -144,8 +166,71 @@ POST /api/v1/research/settlements/{decision_id}
 GET  /api/v1/research/history
 ```
 
+Run the standalone scheduler process against PostgreSQL:
+
+```bash
+uv run aios scheduler serve
+```
+
+The scheduler writes a minimal PostgreSQL heartbeat record while `serve` is
+running and records safe summaries for the two fixed jobs,
+`research_due_scan` and `settlement_due_scan`. The System status API treats a
+heartbeat as current when it is no older than three times the largest configured
+scan or misfire interval. If no heartbeat exists, scheduler status is `unknown`,
+not failed.
+
+Run one due scan manually:
+
+```bash
+uv run aios scheduler run-once
+uv run aios settlement run-once
+```
+
 List endpoints support `limit` and `offset`. `limit` defaults to 50 and is capped
 at 200.
+
+### AIOS Frontend
+
+前端按照 AIOS 业务闭环组织页面：
+
+```text
+/dashboard       首页，展示今日待办、最新研究结果、待处理异常和最近复盘
+/research        研究列表
+/research/new    人工验收工作台
+/research/:runId 研究详情，按完整闭环展示证据到学习建议
+/decisions       决策列表
+/reviews         复盘列表，合并模拟执行、结果结算、评价和复盘
+/reviews/:settlementId 复盘详情
+/learning        学习建议列表
+/learning/:learningId 学习建议详情和人工审核
+/system          系统运行状态，只读展示后端、数据库、调度器、任务和提供方状态
+```
+
+旧入口 `/executions`、`/settlements`、`/settlements/:settlementId` 和
+`/learning-proposals` 会重定向到新的业务页面。`/executions/:executionId`
+作为隐藏兼容详情保留，用于尚未形成结算的历史模拟执行链接。根路径 `/`
+重定向到 `/dashboard`。
+
+The list uses the existing Refine data provider and supports backend-backed
+pagination plus symbol, market, status, workflow, date, and sort query fields
+where the API can satisfy them. The detail page reads
+`GET /api/v1/research/runs/{run_id}/detail` and displays persisted Run,
+Evidence, Skill Reports, Hypothesis, Discussion, Decision, Trade Plan,
+Simulated Execution, Settlement, Evaluation, Review, and Learning Proposal data.
+
+The Dashboard reads only `GET /api/v1/dashboard/summary`. It does not download
+all research, execution, settlement, or learning records to calculate its
+summary, and it does not render charts or market行情 widgets.
+
+The System page reads only `GET /api/v1/system/status`. It is read-only and does
+not restart services, edit Scheduler settings, display or edit keys, expose
+logs, or manage Docker or PostgreSQL. Provider status uses local configuration
+validation only and does not execute a paid external LLM request. Common status
+values are `healthy`, `degraded`, `unavailable`, `not_configured`, and
+`unknown`.
+
+Watchlist manual run results route to `/research/:runId` using the real
+`run.run_id` returned by the backend.
 
 ### AKShare Market Data
 
@@ -293,9 +378,32 @@ docker compose up --build
 ```
 
 Open `http://127.0.0.1:4173/research`. In Compose mode the backend is published
-at `http://127.0.0.1:18000/api/v1` to avoid collisions with local development
-servers on port 8000. Compose starts PostgreSQL, applies Alembic migrations in
-the backend container, and serves the built frontend.
+at `http://127.0.0.1:8000/api/v1`, matching local development. Compose starts
+PostgreSQL, applies Alembic migrations in the backend container, and serves the
+built frontend.
+
+If port 8000 is already occupied, identify the process before stopping it:
+
+```bash
+ss -ltnp
+docker ps --format 'table {{.ID}}\t{{.Names}}\t{{.Ports}}\t{{.Image}}'
+```
+
+Only stop a process you recognize. For example, if an old local stack owns the
+port, stop that specific container:
+
+```bash
+docker stop ai-quant-platform-v3-backend-1
+```
+
+Smoke-check the current backend before opening the workbench:
+
+```bash
+curl -i http://127.0.0.1:8000/api/v1/evidence
+curl -i -X POST http://127.0.0.1:8000/api/v1/research/watchlist \
+  -H 'content-type: application/json' \
+  -d '{"symbol":"600519","market":"CN","note":"smoke"}'
+```
 
 The workbench displays `REAL MARKET DATA` and `REAL LLM` when it is using the
 production path. A-share symbols use the existing BaoStock adapter format such

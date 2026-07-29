@@ -5,10 +5,11 @@ services:
       POSTGRES_DB: aios
       POSTGRES_USER: aios
       POSTGRES_PASSWORD: aios
+      PGDATA: /var/lib/postgresql/data/pgdata
     ports:
       - "5432:5432"
-    tmpfs:
-      - /var/lib/postgresql/data:uid=999,gid=999,mode=700
+    volumes:
+      - aios_postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U aios -d aios"]
       interval: 5s
@@ -31,18 +32,40 @@ services:
       sh -c "uv run alembic upgrade head &&
       uv run uvicorn aios.api.app:create_default_app --factory --host 0.0.0.0 --port 8000"
     ports:
-      - "18000:8000"
+      - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    environment:
+      AIOS_DATABASE_URL: postgresql+psycopg://aios:aios@postgres:5432/aios
+    volumes:
+      - type: bind
+        source: ./.env
+        target: /app/.env
+        read_only: true
+    command: >
+      sh -c "uv run aios scheduler serve"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_started
 
   frontend:
     build:
       context: .
       dockerfile: Dockerfile.frontend
       args:
-        VITE_API_BASE_URL: http://localhost:18000/api/v1
+        VITE_API_BASE_URL: http://localhost:8000/api/v1
     ports:
       - "4173:4173"
     depends_on:
       - backend
+
+volumes:
+  aios_postgres_data:

@@ -3,12 +3,18 @@ from __future__ import annotations
 from fastapi import APIRouter, Query, status
 
 from aios.api.dependencies import LifecycleDep
+from aios.api.schemas.business_views import (
+    BusinessListResponse,
+    DecisionSummaryResponse,
+    decision_summary_list_response,
+)
 from aios.api.schemas.common import ListResponse, page
 from aios.api.schemas.decision import (
     DecisionCreateRequest,
     DecisionResponse,
     decision_response,
 )
+from aios.application.business_views import BusinessViewService
 from aios.kernel.decision import Decision
 
 router = APIRouter(prefix="/decisions", tags=["decisions"])
@@ -21,6 +27,22 @@ def create_decision(
 ) -> DecisionResponse:
     decision = Decision(**request.model_dump())
     return decision_response(lifecycle.create_decision(decision))
+
+
+@router.get("/summary", response_model=BusinessListResponse[DecisionSummaryResponse])
+def list_decision_summary(
+    lifecycle: LifecycleDep,
+    page_number: int = Query(default=1, alias="page", ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+    include_test_data: bool = False,
+) -> BusinessListResponse[DecisionSummaryResponse]:
+    return decision_summary_list_response(
+        BusinessViewService(lifecycle.storage).decisions_summary(
+            page=page_number,
+            page_size=page_size,
+            include_test_data=include_test_data,
+        )
+    )
 
 
 @router.get("/{decision_id}", response_model=DecisionResponse)

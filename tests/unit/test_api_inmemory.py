@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import timedelta
+
 from fastapi.testclient import TestClient
 from tests.api_helpers import (
     create_lifecycle,
@@ -103,14 +105,14 @@ def test_create_and_complete_experiment() -> None:
 
     completed = api.post(
         f"/api/v1/experiments/{experiment['experiment_id']}/complete",
-        json={"finished_at": "2026-07-19T08:10:00+00:00"},
+        json={"finished_at": (now() + timedelta(minutes=10)).isoformat()},
     )
     assert completed.status_code == 200
     assert completed.json()["status"] == "finished"
 
     duplicate = api.post(
         f"/api/v1/experiments/{experiment['experiment_id']}/complete",
-        json={"finished_at": "2026-07-19T08:11:00+00:00"},
+        json={"finished_at": (now() + timedelta(minutes=11)).isoformat()},
     )
     assert duplicate.status_code == 409
     assert duplicate.json()["error"]["code"] == "invalid_state_transition"
@@ -127,7 +129,7 @@ def test_experiment_missing_evidence_and_bad_finish_time() -> None:
 
     not_found = api.post(
         "/api/v1/experiments/ex_missing/complete",
-        json={"finished_at": "2026-07-19T08:10:00+00:00"},
+        json={"finished_at": (now() + timedelta(minutes=10)).isoformat()},
     )
     assert not_found.status_code == 404
 
