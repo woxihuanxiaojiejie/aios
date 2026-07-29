@@ -155,6 +155,9 @@ class DecisionLifecycleService:
     def reject_learning(self, learning_id: str) -> Learning:
         return self._decide_learning(learning_id, ApprovalStatus.REJECTED)
 
+    def defer_learning(self, learning_id: str) -> Learning:
+        return self._decide_learning(learning_id, ApprovalStatus.DEFERRED)
+
     def _require_exists(self, entity_type: type[KernelModel], entity_id: str) -> None:
         if not self._storage.exists(entity_type, entity_id):
             msg = f"{entity_type.__name__} with id {entity_id} is required"

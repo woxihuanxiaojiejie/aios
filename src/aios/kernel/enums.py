@@ -82,6 +82,7 @@ class ApprovalStatus(StrEnum):
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
+    DEFERRED = "deferred"
 
 
 class WatchlistStatus(StrEnum):

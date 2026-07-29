@@ -6,10 +6,12 @@ from decimal import Decimal
 
 from aios.adapters.storage import Storage
 from aios.application.explorer import ExecutionSettlementExplorer, ExplorerDetail
+from aios.application.test_data_filter import should_include_test_data
 from aios.kernel.decision import Decision
 from aios.kernel.execution import SimulatedExecution
 from aios.kernel.learning import Learning
 from aios.kernel.research_run import ResearchRun
+from aios.kernel.review import Review
 from aios.kernel.settlement import DecisionEvaluation, DecisionOutcome
 from aios.kernel.trade_plan import TradePlan
 
@@ -88,16 +90,84 @@ class DashboardSummaryService:
         self._storage = storage
         self._explorer = ExecutionSettlementExplorer(storage)
 
-    def summary(self, *, generated_at: datetime) -> DashboardSummary:
-        runs = self._storage.list(ResearchRun)
-        decisions = self._storage.list(Decision)
-        trade_plans = self._storage.list(TradePlan)
-        executions = self._storage.list(SimulatedExecution)
-        settlements = self._storage.list(DecisionOutcome)
+    def summary(
+        self,
+        *,
+        generated_at: datetime,
+        include_test_data: bool = False,
+    ) -> DashboardSummary:
+        runs = [
+            run
+            for run in self._storage.list(ResearchRun)
+            if should_include_test_data(run, include_test_data=include_test_data)
+        ]
+        visible_session_ids = {
+            run.research_session_id for run in runs if run.research_session_id
+        }
+        decisions = [
+            decision
+            for decision in self._storage.list(Decision)
+            if _has_visible_session(decision.research_session_id, visible_session_ids)
+            or should_include_test_data(
+                decision,
+                include_test_data=include_test_data,
+            )
+        ]
+        visible_decision_ids = {decision.decision_id for decision in decisions}
+        trade_plans = [
+            plan
+            for plan in self._storage.list(TradePlan)
+            if plan.decision_id in visible_decision_ids
+            or _has_visible_session(plan.research_session_id, visible_session_ids)
+        ]
+        visible_trade_plan_ids = {plan.trade_plan_id for plan in trade_plans}
+        executions = [
+            execution
+            for execution in self._storage.list(SimulatedExecution)
+            if execution.decision_id in visible_decision_ids
+            or execution.trade_plan_id in visible_trade_plan_ids
+            or _has_visible_session(execution.research_session_id, visible_session_ids)
+        ]
+        visible_execution_ids = {execution.execution_id for execution in executions}
+        settlements = [
+            settlement
+            for settlement in self._storage.list(DecisionOutcome)
+            if settlement.decision_id in visible_decision_ids
+            or (
+                settlement.execution_id is not None
+                and settlement.execution_id in visible_execution_ids
+            )
+            or _has_visible_session(settlement.research_session_id, visible_session_ids)
+            or should_include_test_data(
+                settlement,
+                include_test_data=include_test_data,
+            )
+        ]
+        visible_outcome_ids = {settlement.outcome_id for settlement in settlements}
         evaluations = self._storage.list(DecisionEvaluation)
-        learnings = self._storage.list(Learning)
+        visible_evaluations = [
+            evaluation
+            for evaluation in evaluations
+            if evaluation.outcome_id in visible_outcome_ids
+        ]
+        visible_review_ids = {
+            review.review_id
+            for review in self._storage.list(Review)
+            if review.decision_id in visible_decision_ids
+        }
+        learnings = [
+            learning
+            for learning in self._storage.list(Learning)
+            if learning.review_id in visible_review_ids
+            or should_include_test_data(
+                learning,
+                include_test_data=include_test_data,
+            )
+        ]
 
-        evaluated_outcome_ids = {evaluation.outcome_id for evaluation in evaluations}
+        evaluated_outcome_ids = {
+            evaluation.outcome_id for evaluation in visible_evaluations
+        }
         evaluated_returns = [
             settlement.return_rate
             for settlement in settlements
@@ -313,6 +383,13 @@ def _average(values: list[Decimal]) -> Decimal | None:
     if not values:
         return None
     return sum(values) / Decimal(len(values))
+
+
+def _has_visible_session(
+    session_id: str | None,
+    visible_session_ids: set[str],
+) -> bool:
+    return session_id is not None and session_id in visible_session_ids
 
 
 def _missing(

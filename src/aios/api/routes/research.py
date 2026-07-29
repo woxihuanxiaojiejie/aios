@@ -20,6 +20,13 @@ from aios.api.dependencies import (
     MarketDataAdapterDep,
     VibeTradingAdapterDep,
 )
+from aios.api.schemas.brain002 import (
+    analysis_task_response,
+    skill_execution_response,
+    skill_result_response,
+)
+from aios.api.schemas.brain003 import discussion_result_response
+from aios.api.schemas.brain004 import decision_result_response
 from aios.api.schemas.common import ListResponse, page
 from aios.api.schemas.debate import (
     DebateResponse,
@@ -98,6 +105,7 @@ from aios.api.schemas.watchlist import (
 )
 from aios.application.brain002 import SkillRegistry
 from aios.application.brain_research_pipeline import BrainEvidenceRepository
+from aios.application.business_views import BusinessViewService
 from aios.application.debate import DebateService
 from aios.application.decision_generation import DecisionGenerationService
 from aios.application.decision_settlement import DecisionSettlementService
@@ -116,6 +124,7 @@ from aios.application.research_settlement import ResearchSettlementService
 from aios.application.settlement import SettlementService
 from aios.application.settlement_scheduler import SettlementSchedulerService
 from aios.application.simulated_execution import SimulatedExecutionService
+from aios.application.test_data_filter import should_include_test_data
 from aios.application.trade_plan import TradePlanService
 from aios.application.watchlist import WatchlistService
 from aios.integrations.trading_calendar import MarketTradingCalendar
@@ -192,6 +201,7 @@ def list_research_runs(
     sort: str = "-created_at",
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
+    include_test_data: bool = False,
 ) -> ResearchRunListResponse:
     runs = lifecycle.storage.list_research_runs(
         watchlist_item_id=watchlist_item_id,
@@ -200,7 +210,11 @@ def list_research_runs(
     rows = [
         _research_run_list_item(lifecycle, run)
         for run in runs
-        if _run_matches(
+        if should_include_test_data(
+            run,
+            include_test_data=include_test_data,
+        )
+        and _run_matches(
             run=run,
             lifecycle=lifecycle,
             symbol=symbol,
@@ -261,6 +275,10 @@ def get_research_run_detail(
         if decision
         else None
     )
+    brain_records = BusinessViewService(lifecycle.storage).brain_records_for_session(
+        session,
+        decision,
+    )
     return ResearchRunDetailResponse(
         run=research_run_response(run),
         watchlist_item=(
@@ -270,6 +288,27 @@ def get_research_run_detail(
         evidence=[evidence_response(item) for item in evidence],
         skill_reports=[agent_report_response(report) for report in reports],
         hypotheses=[hypothesis_response(hypothesis) for hypothesis in hypotheses],
+        analysis_task=(
+            analysis_task_response(brain_records.analysis_task)
+            if brain_records.analysis_task
+            else None
+        ),
+        skill_executions=[
+            skill_execution_response(item) for item in brain_records.skill_executions
+        ],
+        skill_results=[
+            skill_result_response(item) for item in brain_records.skill_results
+        ],
+        discussion_result=(
+            discussion_result_response(brain_records.discussion_result)
+            if brain_records.discussion_result
+            else None
+        ),
+        decision_result=(
+            decision_result_response(brain_records.decision_result)
+            if brain_records.decision_result
+            else None
+        ),
         discussion=discussion,
         decision=decision_response(decision) if decision else None,
         trade_plan=trade_plan_response(trade_plan) if trade_plan else None,

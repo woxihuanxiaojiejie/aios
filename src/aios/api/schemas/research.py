@@ -5,6 +5,13 @@ from decimal import Decimal
 
 from pydantic import Field, field_validator
 
+from aios.api.schemas.brain002 import (
+    AnalysisTaskResponse,
+    SkillExecutionResponse,
+    SkillResultResponse,
+)
+from aios.api.schemas.brain003 import DiscussionResultResponse
+from aios.api.schemas.brain004 import DecisionResultResponse
 from aios.api.schemas.common import ApiSchema, require_timezone
 from aios.api.schemas.debate import (
     DebateResponse,
@@ -235,6 +242,11 @@ class ResearchRunDetailResponse(ApiSchema):
     run: ResearchRunResponse
     watchlist_item: WatchlistItemResponse | None = None
     session: ResearchSessionResponse | None = None
+    analysis_task: AnalysisTaskResponse | None = None
+    skill_executions: list[SkillExecutionResponse] = Field(default_factory=list)
+    skill_results: list[SkillResultResponse] = Field(default_factory=list)
+    discussion_result: DiscussionResultResponse | None = None
+    decision_result: DecisionResultResponse | None = None
     evidence: list[EvidenceResponse]
     skill_reports: list[AgentReportResponse]
     hypotheses: list[HypothesisResponse]

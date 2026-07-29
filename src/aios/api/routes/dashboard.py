@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from aios.api.dependencies import LifecycleDep
 from aios.api.schemas.dashboard import (
@@ -14,7 +14,13 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
 @router.get("/summary", response_model=DashboardSummaryResponse)
-def get_dashboard_summary(lifecycle: LifecycleDep) -> DashboardSummaryResponse:
+def get_dashboard_summary(
+    lifecycle: LifecycleDep,
+    include_test_data: bool = Query(default=False),
+) -> DashboardSummaryResponse:
     return dashboard_summary_response(
-        DashboardSummaryService(lifecycle.storage).summary(generated_at=utc_now())
+        DashboardSummaryService(lifecycle.storage).summary(
+            generated_at=utc_now(),
+            include_test_data=include_test_data,
+        )
     )
