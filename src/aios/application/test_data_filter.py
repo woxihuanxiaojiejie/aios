@@ -4,6 +4,7 @@ from typing import Any
 
 from aios.kernel.decision import Decision
 from aios.kernel.evidence import Evidence
+from aios.kernel.learning import Learning
 from aios.kernel.research_run import ResearchRun
 from aios.kernel.watchlist import WatchlistItem
 
@@ -33,6 +34,13 @@ def is_marked_test_data(value: object) -> bool:
         return _symbol_is_legacy_test(value.symbol) or _id_is_legacy_acceptance(
             value.decision_id
         )
+    if isinstance(value, Learning):
+        return (
+            _id_is_legacy_acceptance(value.learning_id)
+            or _text_is_test(value.target)
+            or _value_is_test(value.before)
+            or _value_is_test(value.after)
+        )
     return _id_is_legacy_acceptance(getattr(value, "entity_id", ""))
 
 
@@ -54,6 +62,18 @@ def _mapping_is_test(value: dict[str, Any]) -> bool:
         return tag.strip().lower() in ACCEPTANCE_TAGS
     if isinstance(tag, list | tuple | set):
         return any(str(item).strip().lower() in ACCEPTANCE_TAGS for item in tag)
+    return False
+
+
+def _value_is_test(value: Any) -> bool:
+    if isinstance(value, dict):
+        return _mapping_is_test(value) or any(
+            _value_is_test(item) for item in value.values()
+        )
+    if isinstance(value, list | tuple | set):
+        return any(_value_is_test(item) for item in value)
+    if isinstance(value, str):
+        return _text_is_test(value) or _symbol_is_legacy_test(value)
     return False
 
 

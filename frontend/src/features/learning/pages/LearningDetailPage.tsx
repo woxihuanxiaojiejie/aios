@@ -227,6 +227,11 @@ function runReviewAction(action: ReviewAction, learningId: string) {
 
 function safeTechnical(value: Record<string, unknown>) {
   return Object.fromEntries(
-    Object.entries(value).filter(([key]) => !/api_key|secret|token|password/i.test(key)),
+    Object.entries(value).filter(
+      ([key]) =>
+        !/api[_-]?key|secret|token|password|authorization|database[_-]?url/i.test(
+          key,
+        ),
+    ),
   );
 }

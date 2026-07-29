@@ -426,7 +426,7 @@ def _missing_settlement(
         current_stage="Settlement 已生成",
         missing_stage=missing_stage,
         created_at=settlement.settled_at if settlement else run.created_at,
-        detail_path=f"/settlements/{detail_id}"
+        detail_path=f"/reviews/{detail_id}"
         if settlement
         else f"/research/{run.run_id}",
         detail_id=detail_id,

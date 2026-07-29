@@ -14,6 +14,7 @@ from aios.api.schemas.learning import (
     learning_response,
 )
 from aios.application.business_views import BusinessViewService
+from aios.application.test_data_filter import should_include_test_data
 from aios.kernel.learning import Learning
 
 router = APIRouter(prefix="/learnings", tags=["learnings"])
@@ -48,8 +49,13 @@ def list_learnings(
     lifecycle: LifecycleDep,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    include_test_data: bool = Query(default=False),
 ) -> ListResponse[LearningResponse]:
-    items = [learning_response(item) for item in lifecycle.list_entities(Learning)]
+    items = [
+        learning_response(item)
+        for item in lifecycle.list_entities(Learning)
+        if should_include_test_data(item, include_test_data=include_test_data)
+    ]
     return page(items, limit, offset)
 
 

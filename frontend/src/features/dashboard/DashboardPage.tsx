@@ -235,7 +235,7 @@ function RecentReviewTable({ rows }: { rows: RecentSettlementItem[] }) {
       dataIndex: "settlement_id",
       width: 120,
       render: (value: string) => (
-        <Link to={`/settlements/${encodeURIComponent(value)}`}>查看复盘</Link>
+        <Link to={`/reviews/${encodeURIComponent(value)}`}>查看复盘</Link>
       ),
     },
   ];

@@ -3,8 +3,13 @@ import type { Learning, ListResponse } from "../../infrastructure/api/research";
 import type { LearningDetail } from "./types";
 
 export const learningApi = {
-  list() {
-    return apiClient.get<ListResponse<Learning>>("/learnings");
+  list(params: { includeTestData?: boolean } = {}) {
+    const search = new URLSearchParams();
+    if (params.includeTestData) search.set("include_test_data", "true");
+    const suffix = search.toString();
+    return apiClient.get<ListResponse<Learning>>(
+      suffix ? `/learnings?${suffix}` : "/learnings",
+    );
   },
   detail(learningId: string) {
     return apiClient.get<LearningDetail>(

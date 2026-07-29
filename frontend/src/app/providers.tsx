@@ -45,18 +45,18 @@ export function AppProviders({ children }: { children: ReactNode }) {
                 create: "/research/new",
               },
               {
-                name: "simulated-executions",
-                list: "/executions",
-                show: "/executions/:executionId",
+                name: "decisions",
+                list: "/decisions",
               },
               {
-                name: "settlements",
-                list: "/settlements",
-                show: "/settlements/:settlementId",
+                name: "reviews",
+                list: "/reviews",
+                show: "/reviews/:settlementId",
               },
               {
                 name: "learnings",
-                list: "/learning-proposals",
+                list: "/learning",
+                show: "/learning/:learningId",
               },
             ]}
             options={{ syncWithLocation: false }}

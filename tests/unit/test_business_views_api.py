@@ -137,6 +137,8 @@ def test_default_lists_hide_marked_test_data_and_can_include_it() -> None:
         "/api/v1/dashboard/summary",
         params={"include_test_data": True},
     )
+    default_learnings = api.get("/api/v1/learnings")
+    all_learnings = api.get("/api/v1/learnings", params={"include_test_data": True})
 
     assert default_research.status_code == 200
     assert [item["run_id"] for item in default_research.json()["items"]] == [
@@ -148,6 +150,13 @@ def test_default_lists_hide_marked_test_data_and_can_include_it() -> None:
     }
     assert default_dashboard.json()["counts"]["research_runs"] == 1
     assert all_dashboard.json()["counts"]["research_runs"] == 2
+    assert [item["learning_id"] for item in default_learnings.json()["items"]] == [
+        real["learning"].learning_id
+    ]
+    assert {item["learning_id"] for item in all_learnings.json()["items"]} == {
+        real["learning"].learning_id,
+        marked["learning"].learning_id,
+    }
 
 
 def _client_with_chain(
@@ -340,6 +349,13 @@ def _chain(
         learning_id=f"lr_{ids}",
         created_at=created_at + timedelta(minutes=13),
     )
+    if input_params:
+        learning = learning.model_copy(
+            update={
+                "before": {**learning.before, **input_params},
+                "after": {**learning.after, **input_params},
+            }
+        )
     run = ResearchRun(
         run_id=f"run_{ids}",
         research_session_id=session.research_session_id,

@@ -90,23 +90,32 @@ describe("App routing", () => {
     expect(screen.getByText("创建证据")).toBeInTheDocument();
   });
 
-  it("serves the execution and settlement explorer routes", async () => {
+  it("redirects legacy entity routes to business pages", async () => {
     window.history.pushState({}, "", "/executions");
     const { unmount } = render(<App />);
 
-    expect(await screen.findByText("Simulated Executions")).toBeInTheDocument();
+    await waitFor(() => expect(window.location.pathname).toBe("/reviews"));
+    expect(await screen.findByRole("heading", { name: "复盘" })).toBeInTheDocument();
     unmount();
 
     window.history.pushState({}, "", "/settlements");
     const settlements = render(<App />);
 
-    expect(await screen.findByText("Settlements")).toBeInTheDocument();
+    await waitFor(() => expect(window.location.pathname).toBe("/reviews"));
+    expect(await screen.findByRole("heading", { name: "复盘" })).toBeInTheDocument();
     settlements.unmount();
+
+    window.history.pushState({}, "", "/settlements/oc_123");
+    const settlementDetail = render(<App />);
+
+    await waitFor(() => expect(window.location.pathname).toBe("/reviews/oc_123"));
+    settlementDetail.unmount();
 
     window.history.pushState({}, "", "/learning-proposals");
     render(<App />);
 
-    expect(await screen.findByText("Learning Proposals")).toBeInTheDocument();
+    await waitFor(() => expect(window.location.pathname).toBe("/learning"));
+    expect(await screen.findByRole("heading", { name: "学习" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /approve|reject|apply/i })).not.toBeInTheDocument();
   });
 

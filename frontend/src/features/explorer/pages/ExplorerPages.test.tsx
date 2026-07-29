@@ -56,7 +56,7 @@ describe("Execution and settlement explorer pages", () => {
     expect(screen.getByText("Quantity")).toBeInTheDocument();
     expect(screen.getByText("Market Data Source")).toBeInTheDocument();
     expect(screen.getByText("fixture")).toBeInTheDocument();
-    expect(screen.getByText("等待结算")).toBeInTheDocument();
+    expect(screen.getAllByText("等待结算").length).toBeGreaterThan(0);
     expect(screen.getByText("尚未生成 Evaluation")).toBeInTheDocument();
     expect(screen.getByText("尚未生成 Review")).toBeInTheDocument();
     expect(screen.getByText("尚无 Learning Proposal")).toBeInTheDocument();

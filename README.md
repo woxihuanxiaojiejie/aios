@@ -16,10 +16,10 @@ Settlement, and idempotent business records. AKShare and BaoStock support are
 independent market-data providers that use the same `MarketDataAdapter` protocol
 to import A-share daily bars as `Evidence`.
 
-AIOS is not a professional行情 terminal. Use 同花顺 for行情、K 线、分时图、板块、
-资金流、市场热度、新闻和公告查看. Use AIOS for研究、证据、假设、讨论、决策、
-交易计划、模拟执行、结算、评估、复盘和 Learning Proposal. AIOS does not provide
-professional market charts.
+AIOS 不是专业行情终端。同花顺用于行情、K 线、分时图、板块、资金流、
+市场热度、新闻和公告查看。AIOS 用于证据、初始假设、五项独立分析、冲突识别、
+证据复核、反方审查、讨论修订、最终决策、交易计划、模拟执行、结果结算、
+评价复盘、学习建议和人工审核。AIOS 不提供专业行情图表。
 
 The HTTP API is currently intended only for local development and trusted
 networks. Do not expose it directly to the public internet.
@@ -189,24 +189,27 @@ uv run aios settlement run-once
 List endpoints support `limit` and `offset`. `limit` defaults to 50 and is capped
 at 200.
 
-### Research Frontend
+### AIOS Frontend
 
-The frontend AIOS results pages provide:
+前端按照 AIOS 业务闭环组织页面：
 
 ```text
-/dashboard       AIOS Results Home with summary, attention items, recent research, and recent settlements
-/research        persisted Research Run list
-/research/new    existing manual ResearchWorkbench
-/research/:runId persisted Research Run detail through downstream lifecycle links
-/executions      Simulated Execution explorer
-/executions/:executionId Simulated Execution detail
-/settlements     Settlement explorer
-/settlements/:settlementId Settlement detail
-/learning-proposals read-only pending Learning Proposals
-/system          read-only runtime status for backend, database, scheduler, jobs, queues, and providers
+/dashboard       首页，展示今日待办、最新研究结果、待处理异常和最近复盘
+/research        研究列表
+/research/new    人工验收工作台
+/research/:runId 研究详情，按完整闭环展示证据到学习建议
+/decisions       决策列表
+/reviews         复盘列表，合并模拟执行、结果结算、评价和复盘
+/reviews/:settlementId 复盘详情
+/learning        学习建议列表
+/learning/:learningId 学习建议详情和人工审核
+/system          系统运行状态，只读展示后端、数据库、调度器、任务和提供方状态
 ```
 
-The root path `/` redirects to `/dashboard`.
+旧入口 `/executions`、`/settlements`、`/settlements/:settlementId` 和
+`/learning-proposals` 会重定向到新的业务页面。`/executions/:executionId`
+作为隐藏兼容详情保留，用于尚未形成结算的历史模拟执行链接。根路径 `/`
+重定向到 `/dashboard`。
 
 The list uses the existing Refine data provider and supports backend-backed
 pagination plus symbol, market, status, workflow, date, and sort query fields

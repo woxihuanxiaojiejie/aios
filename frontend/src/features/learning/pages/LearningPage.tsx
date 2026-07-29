@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { Card, Table, Typography } from "antd";
+import { Card, Select, Table, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 import type { Learning } from "../../../infrastructure/api/research";
 import {
@@ -15,9 +15,11 @@ import { formatDateTime } from "../../../shared/formatters";
 import { learningApi } from "../api";
 
 export function LearningPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const includeTestData = searchParams.get("include_test_data") === "true";
   const learnings = useQuery({
-    queryKey: ["learning-proposals"],
-    queryFn: () => learningApi.list(),
+    queryKey: ["learning-proposals", includeTestData],
+    queryFn: () => learningApi.list({ includeTestData }),
   });
 
   const columns: ColumnsType<Learning> = [
@@ -89,7 +91,26 @@ export function LearningPage() {
 
       {learnings.error ? <UserReadableError error={learnings.error} /> : null}
 
-      <Card className="tool-card" title="学习建议">
+      <Card
+        className="tool-card"
+        title="学习建议"
+        extra={
+          <Select
+            aria-label="测试数据"
+            placeholder="测试数据"
+            allowClear
+            value={includeTestData ? "true" : undefined}
+            style={{ width: 160 }}
+            options={[{ value: "true", label: "显示测试数据" }]}
+            onChange={(value) => {
+              const next = new URLSearchParams(searchParams);
+              if (value === "true") next.set("include_test_data", "true");
+              else next.delete("include_test_data");
+              setSearchParams(next);
+            }}
+          />
+        }
+      >
         <Table
           rowKey="learning_id"
           columns={columns}

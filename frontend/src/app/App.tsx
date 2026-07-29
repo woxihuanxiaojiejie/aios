@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useParams } from "react-router-dom";
 
 import { LoadingState } from "../shared/researchDisplay";
 import { ErrorBoundary } from "./ErrorBoundary";
@@ -51,29 +51,9 @@ const LearningDetailPage = lazy(() =>
     default: module.LearningDetailPage,
   })),
 );
-const ExecutionsPage = lazy(() =>
-  import("../features/explorer/pages/ExecutionsPage").then((module) => ({
-    default: module.ExecutionsPage,
-  })),
-);
 const ExecutionDetailPage = lazy(() =>
   import("../features/explorer/pages/ExecutionDetailPage").then((module) => ({
     default: module.ExecutionDetailPage,
-  })),
-);
-const SettlementsPage = lazy(() =>
-  import("../features/explorer/pages/SettlementsPage").then((module) => ({
-    default: module.SettlementsPage,
-  })),
-);
-const SettlementDetailPage = lazy(() =>
-  import("../features/explorer/pages/SettlementDetailPage").then((module) => ({
-    default: module.SettlementDetailPage,
-  })),
-);
-const LearningProposalsPage = lazy(() =>
-  import("../features/explorer/pages/LearningProposalsPage").then((module) => ({
-    default: module.LearningProposalsPage,
   })),
 );
 const SystemStatusPage = lazy(() =>
@@ -100,11 +80,14 @@ export function App() {
                 <Route path="/reviews/:settlementId" element={<ReviewDetailPage />} />
                 <Route path="/learning" element={<LearningPage />} />
                 <Route path="/learning/:learningId" element={<LearningDetailPage />} />
-                <Route path="/executions" element={<ExecutionsPage />} />
+                <Route path="/executions" element={<Navigate to="/reviews" replace />} />
                 <Route path="/executions/:executionId" element={<ExecutionDetailPage />} />
-                <Route path="/settlements" element={<SettlementsPage />} />
-                <Route path="/settlements/:settlementId" element={<SettlementDetailPage />} />
-                <Route path="/learning-proposals" element={<LearningProposalsPage />} />
+                <Route path="/settlements" element={<Navigate to="/reviews" replace />} />
+                <Route
+                  path="/settlements/:settlementId"
+                  element={<NavigateSettlementToReview />}
+                />
+                <Route path="/learning-proposals" element={<Navigate to="/learning" replace />} />
                 <Route path="/system" element={<SystemStatusPage />} />
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />
               </Routes>
@@ -113,5 +96,15 @@ export function App() {
         </AppLayout>
       </BrowserRouter>
     </AppProviders>
+  );
+}
+
+function NavigateSettlementToReview() {
+  const { settlementId } = useParams();
+  return (
+    <Navigate
+      to={`/reviews/${encodeURIComponent(settlementId ?? "")}`}
+      replace
+    />
   );
 }

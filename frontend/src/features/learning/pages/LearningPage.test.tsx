@@ -1,13 +1,16 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { App as AntdApp } from "antd";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LearningPage } from "./LearningPage";
 
+const requests: string[] = [];
+
 describe("LearningPage", () => {
   beforeEach(() => {
+    requests.length = 0;
     vi.stubGlobal("fetch", vi.fn(apiResponse));
   });
 
@@ -24,7 +27,22 @@ describe("LearningPage", () => {
       "href",
       "/learning/lr_123",
     );
+    expect(requests[0]).not.toContain("include_test_data=true");
     expect(document.body.textContent).not.toContain('{"weight"');
+  });
+
+  it("can include marked acceptance data on explicit request", async () => {
+    renderPage();
+
+    expect(await screen.findByText("Skill 权重调整建议")).toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByLabelText("测试数据"));
+    fireEvent.click(await screen.findByText("显示测试数据"));
+
+    await waitFor(() =>
+      expect(requests.some((url) => url.includes("include_test_data=true"))).toBe(
+        true,
+      ),
+    );
   });
 });
 
@@ -45,7 +63,8 @@ function renderPage() {
   );
 }
 
-async function apiResponse() {
+async function apiResponse(input: RequestInfo | URL) {
+  requests.push(String(input));
   return json({
     items: [
       {

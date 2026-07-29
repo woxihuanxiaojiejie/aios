@@ -71,3 +71,25 @@ helpers.
 | Loading, empty, error, time display | `frontend/src/shared/researchDisplay.tsx` | unchanged | repository code | direct reuse | none | reused |
 | Ant Design components | npm package `antd` | direct imports | MIT | npm dependency reuse | no source copied | reused |
 | TanStack Query | npm package `@tanstack/react-query` | direct imports | MIT | npm dependency reuse | no source copied | reused |
+
+## AIOS Chinese Business Workbench
+
+This milestone copied no external source files and introduced no charting,
+market-data, broker, provider-editing, or monitoring UI dependencies. It reused
+the existing Vite/React app, React Router lazy routes, API client, Refine data
+provider, Ant Design, TanStack Query, and the existing backend lifecycle data.
+
+| Component | Original Location | New Location | License | Reuse Method | Modifications | Status |
+| -- | ---- | --- | --- | ---- | ---- | -- |
+| API client and ApiError | `frontend/src/infrastructure/api/client.ts` | unchanged | repository code | direct reuse | added typed business API wrappers only | reused |
+| Refine data provider | `frontend/src/infrastructure/refine/dataProvider.ts` | unchanged | repository code | reused existing provider | resource metadata now points to business pages: decisions, reviews, learning | reused |
+| React Router app shell | `frontend/src/app/App.tsx` | unchanged | repository code | extended existing lazy route pattern | added `/decisions`, `/reviews`, `/learning`; legacy entity routes redirect to business pages | reused |
+| Application navigation | `frontend/src/app/layout.tsx` | unchanged | repository code | reused existing Ant Design Menu | fixed Chinese navigation order: 首页、研究、决策、复盘、学习、系统 | reused |
+| Chinese display mappings | `frontend/src/shared/displayMappings.ts` | unchanged | repository code | shared display layer | centralizes page, status, stage, action, direction, trigger, learning, provider mappings | reused |
+| Business display components | `frontend/src/shared/businessComponents.tsx` | unchanged | repository code | shared component layer | added status tag, technical details, copyable ID, long text, empty state, readable error | reused |
+| Dashboard page | `frontend/src/features/dashboard/DashboardPage.tsx` | unchanged | repository code | rebuilt in place | changed from database-count home to business home: 今日待办、最新研究、异常、复盘 | reused |
+| Research pages | `frontend/src/features/research/pages/*` | unchanged | repository code | rebuilt in place | list and detail now follow the AIOS lifecycle from evidence to learning proposal | reused |
+| Decision pages | `frontend/src/features/decisions/*` | new feature folder | repository code | new thin UI over backend summary API | lists final decisions with Chinese action/status display | added |
+| Review pages | `frontend/src/features/reviews/*` | new feature folder | repository code | new thin UI over backend summary/detail APIs | combines simulated execution, settlement, evaluation, review, and learning | added |
+| Learning pages | `frontend/src/features/learning/*` | new feature folder | repository code | new thin UI over backend learning APIs | readable proposals and proposal-only manual approve/reject/defer actions | added |
+| System status page | `frontend/src/features/system/pages/SystemStatusPage.tsx` | unchanged | repository code | rebuilt display layer only | localized runtime status and moves raw messages to technical details | reused |

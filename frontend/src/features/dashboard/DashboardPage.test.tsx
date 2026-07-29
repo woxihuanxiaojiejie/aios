@@ -42,7 +42,7 @@ describe("DashboardPage", () => {
     );
     expect(screen.getByRole("link", { name: "查看复盘" })).toHaveAttribute(
       "href",
-      "/settlements/oc_123",
+      "/reviews/oc_123",
     );
     expect(document.body.textContent).not.toMatch(/echarts|lightweight-charts/i);
   });
