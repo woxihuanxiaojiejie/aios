@@ -51,7 +51,15 @@ describe("App routing", () => {
 
     render(<App />);
 
-    expect(await screen.findByText("Research Runs")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "研究" })).toBeInTheDocument();
+  });
+
+  it("serves the Decisions business page at /decisions", async () => {
+    window.history.pushState({}, "", "/decisions");
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "决策" })).toBeInTheDocument();
   });
 
   it("keeps the existing ResearchWorkbench available at /research/new", async () => {
@@ -187,6 +195,9 @@ async function apiResponse(input: RequestInfo | URL) {
   }
   if (url.includes("/research/runs")) {
     return json({ items: [], total: 0, limit: 10, offset: 0, count: 0 });
+  }
+  if (url.includes("/decisions/summary")) {
+    return json({ items: [], total: 0, page: 1, page_size: 10, count: 0 });
   }
   if (url.includes("/simulated-executions")) {
     return json({ items: [], total: 0, page: 1, page_size: 10, count: 0 });

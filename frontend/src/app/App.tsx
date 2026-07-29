@@ -26,6 +26,11 @@ const ResearchRunDetailPage = lazy(() =>
     default: module.ResearchRunDetailPage,
   })),
 );
+const DecisionsPage = lazy(() =>
+  import("../features/decisions/pages/DecisionsPage").then((module) => ({
+    default: module.DecisionsPage,
+  })),
+);
 const ExecutionsPage = lazy(() =>
   import("../features/explorer/pages/ExecutionsPage").then((module) => ({
     default: module.ExecutionsPage,
@@ -70,6 +75,7 @@ export function App() {
                 <Route path="/research" element={<ResearchRunsPage />} />
                 <Route path="/research/new" element={<ResearchNewPage />} />
                 <Route path="/research/:runId" element={<ResearchRunDetailPage />} />
+                <Route path="/decisions" element={<DecisionsPage />} />
                 <Route path="/executions" element={<ExecutionsPage />} />
                 <Route path="/executions/:executionId" element={<ExecutionDetailPage />} />
                 <Route path="/settlements" element={<SettlementsPage />} />
